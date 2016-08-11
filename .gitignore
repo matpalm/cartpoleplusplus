@@ -1,3 +1,5 @@
 venv
 *pyc
 pybullet.so
+*hdf5
+*~
