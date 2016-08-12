@@ -1,3 +1,12 @@
+# cartpole ++
+
+implementing a non trivial cartpole environment using [bullet physics](http://bulletphysics.org/)
+
+see [the blog post](http://matpalm.com) for loads more info...
+
+![cartpole](cartpole.png)
+
+
 ```
 sudo apt-get install libhdf5-dev
 virtualenv venv --system-site-packages
@@ -7,7 +16,12 @@ pip install <whatever_tensorflow_wheel_file>
 export PYTHONPATH=$PYTHONPATH:$HOME/dev/keras-rl
 ```
 
- ./random_action_agent.py --initial-force=0 --actions="0" --num-eval=100 | ./deciles.py 
+## before training
+
+<iframe width="420" height="315" src="https://www.youtube.com/embed/buSAT-3Q8Zs" frameborder="0" allowfullscreen></iframe>
+
+```
+$ ./random_action_agent.py --initial-force=0 --actions="0" --num-eval=100 | ./deciles.py 
 [ 200.  200.  200.  200.  200.  200.  200.  200.  200.  200.  200.]
 
 $ ./random_action_agent.py --initial-force=0 --actions="0,1,2,3,4" --num-eval=100 | ./deciles.py
@@ -18,6 +32,35 @@ $ ./random_action_agent.py --initial-force=55 --actions="0" --num-eval=100 | ./d
 
 $ ./random_action_agent.py --initial-force=55 --actions="0,1,2,3,4" --num-eval=100 | ./deciles.py 
 [  3.    5.9   7.    7.7   8.    9.   10.   11.   13.   15.   32. ]
+```
 
+## training
 
-time python dqn_bullet_cartpole.py --initial-force=55 --action-force=40 --num-train=10000 --save-file=ckpt1.hdf5
+```
+$ python ./dqn_bullet_cartpole.py \
+ --num-train=2000000 --num-eval=0 \
+ --save-file=ckpt.h5
+```
+
+## after training
+
+by numbers...
+
+```
+$ python ./dqn_bullet_cartpole.py \
+ --load-file=ckpt.h5 \
+ --num-train=0 --num-eval=100 \
+ | grep ^Episode | sed -es/.*steps:// | ./deciles.py 
+[   5.    35.5   49.8   63.4   79.   104.5  122.   162.6  184.   200.   200. ]
+```
+
+visually...
+
+<iframe width="420" height="315" src="https://www.youtube.com/embed/zteyMIvhn1U" frameborder="0" allowfullscreen></iframe>
+
+```
+$ python ./dqn_bullet_cartpole.py \
+ --gui=True --delay=0.005 \
+ --load-file=run11_50.weights.2.h5 \
+ --num-train=0 --num-eval=100
+```
