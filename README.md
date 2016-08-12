@@ -43,33 +43,43 @@ $ ./random_action_agent.py --initial-force=55 --actions="0,1,2,3,4" --num-eval=1
 [  3.    5.9   7.    7.7   8.    9.   10.   11.   13.   15.   32. ]
 ```
 
-## training
+## training a dqn 
 
 ```
-$ python ./dqn_bullet_cartpole.py \
+$ ./dqn_bullet_cartpole.py \
  --num-train=2000000 --num-eval=0 \
  --save-file=ckpt.h5
 ```
 
-## after training
-
-by numbers...
+result by numbers...
 
 ```
-$ python ./dqn_bullet_cartpole.py \
+$ ./dqn_bullet_cartpole.py \
  --load-file=ckpt.h5 \
  --num-train=0 --num-eval=100 \
  | grep ^Episode | sed -es/.*steps:// | ./deciles.py 
 [   5.    35.5   49.8   63.4   79.   104.5  122.   162.6  184.   200.   200. ]
 ```
 
-visually (click through for video)
+result visually (click through for video)
 
 [![link](https://img.youtube.com/vi/zteyMIvhn1U/0.jpg)](https://www.youtube.com/watch?v=zteyMIvhn1U)
 
 ```
-$ python ./dqn_bullet_cartpole.py \
+$ ./dqn_bullet_cartpole.py \
  --gui=True --delay=0.005 \
  --load-file=run11_50.weights.2.h5 \
  --num-train=0 --num-eval=100
 ```
+
+## training based on policy gradient
+
+```
+$ ./pg_cartpole.py --rollouts-per-batch=20 --num-train-batches=10000 \
+ --ckpt-dir=ckpts/foo
+```
+
+gives an interesting partial solution... do nothing most of the time but just correct when pushed
+"right", works well 25% of the time....
+
+[![link](https://img.youtube.com/vi/fjptcbh3zis/0.jpg)](https://www.youtube.com/watch?v=fjptcbh3zis)

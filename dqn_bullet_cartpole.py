@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # copy pasta from https://github.com/matthiasplappert/keras-rl/blob/master/examples/dqn_cartpole.py
 # with some extra arg parsing
 
@@ -17,8 +19,10 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--gui', type=bool, default=False)
-parser.add_argument('--initial-force', type=float, default=55.0, help="magnitude of initial push, in random direction")
-parser.add_argument('--action-force', type=float, default=50.0, help="magnitude of action push")
+parser.add_argument('--initial-force', type=float, default=55.0,
+                    help="magnitude of initial push, in random direction")
+parser.add_argument('--action-force', type=float, default=50.0,
+                    help="magnitude of action push")
 parser.add_argument('--num-train', type=int, default=100)
 parser.add_argument('--num-eval', type=int, default=0)
 parser.add_argument('--load-file', type=str, default=None)
@@ -39,16 +43,14 @@ model = Sequential()
 model.add(Flatten(input_shape=(1,) + env.observation_space.shape))
 model.add(Dense(32))
 model.add(Activation('tanh'))
-model.add(Dense(16))
-model.add(Activation('relu'))
-model.add(Dense(16))
-model.add(Activation('relu'))
+#model.add(Dense(16))
+#model.add(Activation('relu'))
+#model.add(Dense(16))
+#model.add(Activation('relu'))
 model.add(Dense(nb_actions))
 model.add(Activation('linear'))
 print(model.summary())
 
-# Finally, we configure and compile our agent. You can use every built-in Keras optimizer and
-# even the metrics!
 memory = SequentialMemory(limit=50000)
 policy = BoltzmannQPolicy()
 dqn = DQNAgent(model=model, nb_actions=nb_actions, memory=memory, nb_steps_warmup=10,
