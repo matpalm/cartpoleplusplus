@@ -18,12 +18,12 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--gui', type=bool, default=False)
 parser.add_argument('--initial-force', type=float, default=55.0, help="magnitude of initial push, in random direction")
-parser.add_argument('--action-force', type=float, default=40.0, help="magnitude of action push")
+parser.add_argument('--action-force', type=float, default=50.0, help="magnitude of action push")
 parser.add_argument('--num-train', type=int, default=100)
 parser.add_argument('--num-eval', type=int, default=0)
 parser.add_argument('--load-file', type=str, default=None)
 parser.add_argument('--save-file', type=str, default=None)
-parser.add_argument('--with-delay', type=float, default=0.0)
+parser.add_argument('--delay', type=float, default=0.0)
 opts = parser.parse_args()
 print "OPTS", opts
 
@@ -31,7 +31,7 @@ ENV_NAME = 'BulletCartpole'
 
 # Get the environment and extract the number of actions.
 env = bullet_cartpole.BulletCartpole(gui=opts.gui, action_force=opts.action_force,
-                                     initial_force=opts.initial_force, with_delay=opts.with_delay)
+                                     initial_force=opts.initial_force, delay=opts.delay)
 nb_actions = env.action_space.n
 
 # Next, we build a very simple model.

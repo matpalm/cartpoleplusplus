@@ -22,10 +22,10 @@ class BulletCartpole(gym.Env):
    'video.frames_per_second' : 50
   }
 
-  def __init__(self, gui=True, with_delay=0, max_episode_len=200, action_force=50.0,
+  def __init__(self, gui=True, delay=0.0, max_episode_len=200, action_force=50.0,
                initial_force=55.0, include_cart_in_state=True, random_theta=True):
     self.gui = gui
-    self.with_delay = with_delay if gui else 0.0
+    self.delay = delay if gui else 0.0
 
     self.max_episode_len = max_episode_len
 
@@ -126,8 +126,8 @@ class BulletCartpole(gym.Env):
     for _ in xrange(self.sim_step_rate):
       p.stepSimulation()
       p.applyExternalForce(self.cart, -1, (fx,fy,0), (0,0,0), p.WORLD_FRAME)
-      if self.with_delay > 0:
-        time.sleep(self.with_delay)
+      if self.delay > 0:
+        time.sleep(self.delay)
     self.steps += 1
 
     # Check for out of bounds by position or orientation on pole.
@@ -180,8 +180,8 @@ class BulletCartpole(gym.Env):
     for _ in xrange(self.initial_force_steps):
       p.stepSimulation()
       p.applyExternalForce(self.cart, -1, (fx, fy, 0), (0, 0, 0), p.WORLD_FRAME)
-      if self.with_delay > 0:
-        time.sleep(self.with_delay)
+      if self.delay > 0:
+        time.sleep(self.delay)
 
     # bootstrap last / current state
     self.last_state = self.pole_and_cart_state()
