@@ -17,7 +17,7 @@ export PYTHONPATH=$PYTHONPATH:$HOME/dev/keras-rl
 
 ## before training
 
-<iframe width="420" height="315" src="https://www.youtube.com/embed/buSAT-3Q8Zs" frameborder="0" allowfullscreen></iframe>
+[![link](https://img.youtube.com/vi/buSAT-3Q8Zs/0.jpg)](https://www.youtube.com/watch?v=buSAT-3Q8Zs)
 
 ```
 $ ./random_action_agent.py --initial-force=0 --actions="0" --num-eval=100 | ./deciles.py 
@@ -55,7 +55,7 @@ $ python ./dqn_bullet_cartpole.py \
 
 visually...
 
-<iframe width="420" height="315" src="https://www.youtube.com/embed/zteyMIvhn1U" frameborder="0" allowfullscreen></iframe>
+[![link](https://img.youtube.com/vi/zteyMIvhn1U/0.jpg)](https://www.youtube.com/watch?v=zteyMIvhn1U)
 
 ```
 $ python ./dqn_bullet_cartpole.py \
