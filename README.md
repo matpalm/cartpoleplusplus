@@ -17,6 +17,8 @@ export PYTHONPATH=$PYTHONPATH:$HOME/dev/keras-rl
 
 ## before training
 
+(click through for video)
+
 [![link](https://img.youtube.com/vi/buSAT-3Q8Zs/0.jpg)](https://www.youtube.com/watch?v=buSAT-3Q8Zs)
 
 ```
@@ -53,7 +55,7 @@ $ python ./dqn_bullet_cartpole.py \
 [   5.    35.5   49.8   63.4   79.   104.5  122.   162.6  184.   200.   200. ]
 ```
 
-visually...
+visually (click through for video)
 
 [![link](https://img.youtube.com/vi/zteyMIvhn1U/0.jpg)](https://www.youtube.com/watch?v=zteyMIvhn1U)
 
