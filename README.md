@@ -1,11 +1,10 @@
 # cartpole ++
 
-implementing a non trivial cartpole environment using [bullet physics](http://bulletphysics.org/)
+implementing a non trivial 3d cartpole [gym](https://gym.openai.com/) environment using [bullet physics](http://bulletphysics.org/)
 
 see [the blog post](http://matpalm.com) for loads more info...
 
 ![cartpole](cartpole.png)
-
 
 ```
 sudo apt-get install libhdf5-dev
