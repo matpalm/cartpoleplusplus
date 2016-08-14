@@ -2,6 +2,14 @@
 import os, time, yaml
 import tensorflow as tf
 
+def standardise(tensor):
+  """ standardise a tensor. """
+  # is std_dev not an op in tensorflow?!? i must be taking crazy pills...
+  mean = tf.reduce_mean(tensor)
+  variance = tf.reduce_mean(tf.square(tensor - mean))
+  std_dev = tf.sqrt(variance)
+  return (tensor - mean) / std_dev
+
 class SaverUtil(object):
   def __init__(self, sess, ckpt_dir="/tmp", save_freq=60):
     self.sess = sess

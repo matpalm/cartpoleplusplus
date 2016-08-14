@@ -37,14 +37,6 @@ print opts
 
 EPSILON = 1e-3
 
-def standardise(tensor):
-  """ standardise a tensor. """
-  # is std_dev not an op in tensorflow?!? i must be taking crazy pills...
-  mean = tf.reduce_mean(tensor)
-  variance = tf.reduce_mean(tf.square(tensor - mean))
-  std_dev = tf.sqrt(variance)
-  return (tensor - mean) / std_dev
-
 class PolicyGradientAgent(object):
   def __init__(self, sess, env, hidden_dim, optimiser, gui=False):
     self.sess = sess
@@ -106,7 +98,7 @@ class PolicyGradientAgent(object):
     # episode represents the quantity we want to maximise. we standardise the advantage
     # values so roughly 1/2 +ve / -ve as a variance control.
     action_mul_advantages = tf.mul(action_log_p,
-                                   standardise(self.advantages))
+                                   util.standardise(self.advantages))
     self.loss = -tf.reduce_sum(action_mul_advantages)  # recall: we are maximising.
     self.train_op = optimiser.minimize(self.loss)
 
