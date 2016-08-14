@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import os, time, yaml
+import datetime, os, time, yaml
 import tensorflow as tf
 
 def standardise(tensor):
@@ -41,7 +41,8 @@ class SaverUtil(object):
     
   def force_save(self):
     """force a save now."""
-    new_ckpt = "%s/ckpt.%s" % (self.ckpt_dir, int(time.time()))
+    dts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    new_ckpt = "%s/ckpt.%s" % (self.ckpt_dir, dts)
     print "saving ckpt", new_ckpt
     self.saver.save(self.sess, new_ckpt)
     self.next_scheduled_save_time = time.time() + self.save_freq
