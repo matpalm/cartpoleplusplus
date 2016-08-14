@@ -149,8 +149,12 @@ class PolicyGradientAgent(object):
         # keep total rewards just for debugging / stats
         total_rewards.append(sum(rewards))
 
-      # train
-      loss = self.train(batch_observations, batch_actions, batch_advantages)
+      if min(total_rewards) == max(total_rewards):
+        # converged ??
+        print "converged? standardisation of advantaged will barf here...."
+        loss = 0
+      else:
+        loss = self.train(batch_observations, batch_actions, batch_advantages)
 
       # dump some stats
       stats = {"batch": batch_id,

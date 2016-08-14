@@ -5,6 +5,7 @@ import gym
 from gym import spaces
 import pybullet as p
 import numpy as np
+import sys
 import time
 
 np.set_printoptions(precision=3, suppress=True, linewidth=10000)
@@ -120,7 +121,7 @@ class BulletCartpole(gym.Env):
     elif action == 4:
       fy = -self.action_force
     else:
-      print >>sys.stderr, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! unknown action? [%s].... assuming 0"
+      print >>sys.stderr, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! unknown action? [%s].... assuming 0" % action
 #      raise Exception("unknown action [%s]" % action)
 
     # step simulation forward a bit.
