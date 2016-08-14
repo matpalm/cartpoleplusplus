@@ -124,14 +124,10 @@ class Agent(object):
       observations.append(observation)
       action = self.sample_action_given(observation)
       observation, reward, done, _ = env.step(action)
-      sys.stdout.write("%d" % action)
-      sys.stdout.flush()
-      print action,
       actions.append(action)
       rewards.append(reward)
       if self.gui:
         env.render()
-    print
     return observations, actions, rewards
 
   def train(self, observations, actions, advantages):
