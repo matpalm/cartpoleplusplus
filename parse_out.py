@@ -17,8 +17,8 @@ for filename in sys.argv[1:]:
       # looks like entry from dqn_cartpole
       try:
         m = re.match(".*episode: (\d+),.*episode reward: (.*?),.*loss: (.*?),", line)
-        print emit(run_id=run_id, episode=m.groups(0), reward=m.groups(1),
-                   loss="0" if m.groups(2) == "--" else m.groups(2))
+        emit(run_id=run_id, episode=m.group(1), reward=m.group(2),
+             loss="0" if m.group(3) == "--" else m.group(3))
       except AttributeError:
         pass
     elif line.startswith("STATS"):      
