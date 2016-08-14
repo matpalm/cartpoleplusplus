@@ -15,7 +15,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--num-hidden', type=int, default=32)
 parser.add_argument('--num-eval', type=int, default=0,
                     help="if >0 just run eval and no training")
-parser.add_argument('--num-train-batches', type=int, default=1000,
+parser.add_argument('--num-train-batches', type=int, default=10,
                     help="number of training batches to run")
 parser.add_argument('--rollouts-per-batch', type=int, default=10,
                     help="number of rollouts to run for each training batch")
@@ -45,15 +45,15 @@ def standardise(tensor):
   std_dev = tf.sqrt(variance)
   return (tensor - mean) / std_dev
 
-class Agent(object):
+class PolicyGradientAgent(object):
   def __init__(self, sess, env, hidden_dim, optimiser, gui=False):
     self.sess = sess
+    self.env = env
     self.gui = gui
 
     # base model mapping from observation to actions through single hidden layer.
-    observation_dim = env.observation_space.shape[0]
-    num_actions = env.action_space.n
-    print "observation_dim", observation_dim, "num_actions", num_actions
+    observation_dim = self.env.observation_space.shape[0]
+    num_actions = self.env.action_space.n
 
     # we have three place holders we'll use...
     # observations; used either during rollout to sample some actions, or
@@ -115,19 +115,19 @@ class Agent(object):
     return self.sess.run(self.sampled_action_op,
                          feed_dict={self.observations: [observation]})
 
-  def rollout(self, env):
+  def rollout(self):
     """ run one episode collecting observations, actions and advantages"""
     observations, actions, rewards = [], [], []
-    observation = env.reset()
+    observation = self.env.reset()
     done = False
     while not done:
       observations.append(observation)
       action = self.sample_action_given(observation)
-      observation, reward, done, _ = env.step(action)
+      observation, reward, done, _ = self.env.step(action)
       actions.append(action)
       rewards.append(reward)
       if self.gui:
-        env.render()
+        self.env.render()
     return observations, actions, rewards
 
   def train(self, observations, actions, advantages):
@@ -138,38 +138,13 @@ class Agent(object):
                                        self.advantages: advantages })
     return float(loss)
 
-    
-def main():
-#  env = gym.make('CartPole-v0')
-  env = bullet_cartpole.BulletCartpole(gui=opts.gui, action_force=opts.action_force,
-                                       initial_force=opts.initial_force, delay=opts.delay)
-
-  with tf.Session() as sess:
-    agent = Agent(sess=sess, env=env, gui=opts.gui,
-                  hidden_dim=opts.num_hidden,
-                  optimiser=tf.train.AdamOptimizer())
-
-    saver_util = None
-    if opts.ckpt_dir is not None:
-      # setup saver util; will load latest ckpt, or init if none...
-      saver_util = util.SaverUtil(sess, opts.ckpt_dir, opts.ckpt_freq)
-    else:
-      # no saver util, must do explicit init
-      sess.run(tf.initialize_all_variables())
-
-    if opts.num_eval > 0:
-      for _ in xrange(opts.num_eval):
-        _, _, rewards = agent.rollout(env)
-        total_rewards = sum(rewards)
-        print total_rewards
-      exit(0)
-
-    for batch_id in xrange(opts.num_train_batches):
+  def run_training(self, num_batches, rollouts_per_batch, saver_util):
+    for batch_id in xrange(num_batches):
       # perform a number of rollouts
       batch_observations, batch_actions, batch_advantages = [], [], []
       total_rewards = []
-      for _ in xrange(opts.rollouts_per_batch):    
-        observations, actions, rewards = agent.rollout(env)
+      for _ in xrange(rollouts_per_batch):    
+        observations, actions, rewards = self.rollout()
         batch_observations += observations
         batch_actions += actions
         # train with advantages, not per observation/action rewards.
@@ -180,7 +155,7 @@ def main():
         total_rewards.append(sum(rewards))
 
       # train
-      loss = agent.train(batch_observations, batch_actions, batch_advantages)
+      loss = self.train(batch_observations, batch_actions, batch_advantages)
 
       # dump some stats
       stats = {"batch": batch_id,
@@ -193,9 +168,38 @@ def main():
       if saver_util is not None:
         saver_util.save_if_required()
 
-    # force final save
-    if saver_util is not None:
-      saver_util.force_save()
+  def run_eval(self, num_eval):
+    for _ in xrange(num_eval):
+      _, _, rewards = self.rollout()
+      total_rewards = sum(rewards)
+      print total_rewards
+
+    
+def main():
+#  env = gym.make('CartPole-v0')
+  env = bullet_cartpole.BulletCartpole(gui=opts.gui, action_force=opts.action_force,
+                                       initial_force=opts.initial_force, delay=opts.delay)
+
+  with tf.Session() as sess:
+    agent = PolicyGradientAgent(sess=sess, env=env, gui=opts.gui,
+                                hidden_dim=opts.num_hidden,
+                                optimiser=tf.train.AdamOptimizer())
+
+    # setup saver util; will load latest ckpt, or init if none...
+    saver_util = None
+    if opts.ckpt_dir is not None:
+      saver_util = util.SaverUtil(sess, opts.ckpt_dir, opts.ckpt_freq)
+    else:
+      sess.run(tf.initialize_all_variables())
+
+    # run either eval or training
+    if opts.num_eval > 0:
+      agent.run_eval(opts.num_eval)
+    else:
+      agent.run_training(opts.num_train_batches, opts.rollouts_per_batch, 
+                         saver_util)
+      if saver_util is not None:
+        saver_util.force_save()
 
 if __name__ == "__main__":
   main()
