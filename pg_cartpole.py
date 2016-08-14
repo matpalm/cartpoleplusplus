@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import argparse
 import bullet_cartpole
+import datetime
 import gym
 import json
 import numpy as np
@@ -154,7 +155,8 @@ class PolicyGradientAgent(object):
                "rewards": total_rewards,
                "mean_reward": np.mean(total_rewards),
                "loss": loss}
-      print "STATS\t%s" % json.dumps(stats)
+      print "STATS %s\t%s" % (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                              json.dumps(stats))
 
       # save if required
       if saver_util is not None:

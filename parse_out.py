@@ -24,7 +24,7 @@ for filename in sys.argv[1:]:
     elif line.startswith("STATS"):      
       # looks like entry from the policy gradient code...
       try:
-        d = json.loads(line.replace("STATS\t", ""))
+        d = json.loads(re.sub("STATS.*?\t", "", line))
         emit(run_id=run_id, episode=d['batch'], reward=d['mean_reward'], loss=d['loss'],
              r_min=np.min(d['rewards']), r_mean=np.mean(d['rewards']), r_max=np.max(d['rewards']))
       except ValueError:

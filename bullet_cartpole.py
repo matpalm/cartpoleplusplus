@@ -120,7 +120,8 @@ class BulletCartpole(gym.Env):
     elif action == 4:
       fy = -self.action_force
     else:
-      raise Exception("unknown action [%s]" % action)
+      print >>sys.stderr, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! unknown action? [%s].... assuming 0"
+#      raise Exception("unknown action [%s]" % action)
 
     # step simulation forward a bit.
     for _ in xrange(self.sim_step_rate):
