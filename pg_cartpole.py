@@ -15,7 +15,7 @@ np.set_printoptions(precision=5, threshold=10000, suppress=True, linewidth=10000
 parser = argparse.ArgumentParser()
 parser.add_argument('--num-hidden', type=int, default=32)
 parser.add_argument('--num-eval', type=int, default=0,
-                    help="if >0 just run eval and no training")
+                    help="if >0 just run this many episodes with no training")
 parser.add_argument('--num-train-batches', type=int, default=10,
                     help="number of training batches to run")
 parser.add_argument('--rollouts-per-batch', type=int, default=10,

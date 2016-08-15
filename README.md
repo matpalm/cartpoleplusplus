@@ -79,7 +79,5 @@ $ ./pg_cartpole.py --rollouts-per-batch=20 --num-train-batches=10000 \
  --ckpt-dir=ckpts/foo
 ```
 
-gives an interesting partial solution... do nothing most of the time but just correct when pushed
-"right", works well 25% of the time....
+[![link](https://img.youtube.com/vi/J2syEP_L2-c/0.jpg)](https://www.youtube.com/watch?v=J2syEP_L2-c)
 
-[![link](https://img.youtube.com/vi/fjptcbh3zis/0.jpg)](https://www.youtube.com/watch?v=fjptcbh3zis)
