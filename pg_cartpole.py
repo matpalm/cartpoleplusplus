@@ -25,7 +25,7 @@ parser.add_argument('--ckpt-dir', type=str, default=None,
 parser.add_argument('--ckpt-freq', type=int, default=60,
                     help="freq (sec) to save ckpts")
 # bullet cartpole specific ...
-parser.add_argument('--gui', type=bool, default=False,
+parser.add_argument('--gui', action='store_true',
                     help="whether to call env.render()")
 parser.add_argument('--delay', type=float, default=0.0,
                     help="gui per step delay")

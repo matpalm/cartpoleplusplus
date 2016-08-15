@@ -18,7 +18,7 @@ import bullet_cartpole
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--gui', type=bool, default=False)
+parser.add_argument('--gui', action='store_true')
 parser.add_argument('--initial-force', type=float, default=55.0,
                     help="magnitude of initial push, in random direction")
 parser.add_argument('--action-force', type=float, default=50.0,

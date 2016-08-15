@@ -5,7 +5,7 @@ import random
 import time
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--gui', type=bool, default=False)
+parser.add_argument('--gui', action='store_true')
 parser.add_argument('--initial-force', type=float, default=20.0, help="magnitude of initial push, in random direction")
 parser.add_argument('--actions', type=str, default='0,1,2,3,4', help='comma seperated list of actions to pick from')
 parser.add_argument('--num-eval', type=int, default=1000)
