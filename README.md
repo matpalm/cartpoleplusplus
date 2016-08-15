@@ -1,11 +1,12 @@
 # cartpole ++
 
-implementing a non trivial 3d cartpole [gym](https://gym.openai.com/)
-environment using [bullet physics](http://bulletphysics.org/)
-trained with a [dqn](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf)
-from [keras-rl](https://github.com/matthiasplappert/keras-rl)
+implementing a non trivial 3d cartpole [gym](https://gym.openai.com/) environment using [bullet physics](http://bulletphysics.org/)
+trained with 
 
-see [the blog post](http://matpalm.com) for loads more info...
+* a [dqn](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf) from [keras-rl](https://github.com/matthiasplappert/keras-rl)
+* a hand rolled simple policy gradient method
+
+see [the blog post](http://matpalm.com/blog/cartpole_plus_plus/) for loads more info...
 
 ```
 # some random things i did...
@@ -19,7 +20,7 @@ export PYTHONPATH=$PYTHONPATH:$HOME/dev/keras-rl
 
 ## before training
 
-(click through for video)
+based on behaviour of random action agent (click through for video)
 
 [![link](https://img.youtube.com/vi/buSAT-3Q8Zs/0.jpg)](https://www.youtube.com/watch?v=buSAT-3Q8Zs)
 
