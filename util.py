@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import datetime, os, time, yaml
+import datetime, os, time, yaml, sys
 import tensorflow as tf
 
 def standardise(tensor):
@@ -30,12 +30,12 @@ class SaverUtil(object):
       info = yaml.load(open(ckpt_info_file, "r"))
       assert 'model_checkpoint_path' in info
       most_recent_ckpt = "%s/%s" % (self.ckpt_dir, info['model_checkpoint_path'])
-      print "loading ckpt", most_recent_ckpt
+      sys.stderr.write("loading ckpt %s\n" % most_recent_ckpt)
       self.saver.restore(self.sess, most_recent_ckpt)      
       self.next_scheduled_save_time = time.time() + self.save_freq
     else:
       # no latest ckpts, init and force a save now
-      print "no latest ckpt in %s, just initing vars..." % self.ckpt_dir
+      sys.stderr.write("no latest ckpt in %s, just initing vars...\n" % self.ckpt_dir)
       self.sess.run(tf.initialize_all_variables())
       self.force_save()
     
@@ -43,7 +43,7 @@ class SaverUtil(object):
     """force a save now."""
     dts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     new_ckpt = "%s/ckpt.%s" % (self.ckpt_dir, dts)
-    print "saving ckpt", new_ckpt
+    sys.stderr.write("saving ckpt %s\n" % new_ckpt)
     self.saver.save(self.sess, new_ckpt)
     self.next_scheduled_save_time = time.time() + self.save_freq
 

@@ -36,7 +36,7 @@ parser.add_argument('--initial-force', type=float, default=55.0,
 parser.add_argument('--action-force', type=float, default=50.0,
                     help="magnitude of action push")
 opts = parser.parse_args()
-print opts
+sys.stderr.write("%s\n" % opts)
 
 EPSILON = 1e-3
 
@@ -151,7 +151,7 @@ class PolicyGradientAgent(object):
 
       if min(total_rewards) == max(total_rewards):
         # converged ??
-        print "converged? standardisation of advantaged will barf here...."
+        sys.stderr.write("converged? standardisation of advantaged will barf here....\n")
         loss = 0
       else:
         loss = self.train(batch_observations, batch_actions, batch_advantages)
