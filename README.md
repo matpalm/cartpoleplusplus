@@ -68,7 +68,7 @@ result visually (click through for video)
 
 ```
 $ ./dqn_bullet_cartpole.py \
- --gui=True --delay=0.005 \
+ --gui --delay=0.005 \
  --load-file=run11_50.weights.2.h5 \
  --num-train=0 --num-eval=100
 ```
@@ -90,3 +90,6 @@ visually...
 
 [![link](https://img.youtube.com/vi/J2syEP_L2-c/0.jpg)](https://www.youtube.com/watch?v=J2syEP_L2-c)
 
+## TODOS
+
+* invest in good logging of rollouts for quicker bootstrapping (saw huge payoffs with drivebot)
