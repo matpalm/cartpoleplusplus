@@ -76,9 +76,17 @@ $ ./dqn_bullet_cartpole.py \
 ## training based on policy gradient
 
 ```
-$ ./pg_cartpole.py --rollouts-per-batch=20 --num-train-batches=10000 \
+$ ./pg_cartpole.py --rollouts-per-batch=20 --num-train-batches=1000 \
  --ckpt-dir=ckpts/foo
 ```
+
+by numbers...
+
+```
+[   8.    25.    35.    43.7   48.6   62.5   76.4  100.6  127.   176.1   200. ]
+```
+
+visually... 
 
 [![link](https://img.youtube.com/vi/J2syEP_L2-c/0.jpg)](https://www.youtube.com/watch?v=J2syEP_L2-c)
 

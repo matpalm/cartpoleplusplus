@@ -72,37 +72,32 @@ class PolicyGradientAgent(object):
     sample_action = tf.multinomial(self.logits, num_samples=1),
     self.sampled_action_op = tf.reshape(sample_action, shape=[])
 
-    # there are two components of what we are trying to maximise...
-    # 1) the log_p of "good" actions
+    # we are trying to maximise the product of two components...
+    # 1) the log_p of "good" actions.
     # 2) the advantage term based on the rewards from actions.
 
-    # first the (|obs|, |action|) log probabilties of actions
-    self.log_p = tf.log(tf.nn.softmax(self.logits))
+    # first we need the log_p values for each observation for the actions we specifically
+    # took by sampling...
+    # first we run a softmax over the action logits to get probabilities.
+    # ( +epsilon to avoid near zero instabilities )
+    self.softmax = tf.nn.softmax(self.logits + 1e-20)
+    self.softmax = tf.verify_tensor_all_finite(self.softmax, msg="softmax")
 
-    # the log_p matrix gives us log probabilities for all possible actions in this
-    # set of observations but we want to consider only the ones for the _actual_ actions
-    # that were taken, these will contribute to the loss. there are two ways to do this;
-    # 1) by masking the entire log_p matrix with one hot row vectors and then summing
-    # over axis=1 or 2) by calculating the values to pick, per row, using indexing
-    # assuming the log_p matrix is reshaped to a vector (row major ordered). in this
-    # code we do the second.
-    num_rows_in_log_p = tf.shape(self.observations)[0]
-    # 0 -> num rows sequence.
-    log_p_indices = tf.range(0, num_rows_in_log_p)
-    # 0, a, 2a, ...   ie 0th column in log_p matrix (for 'a' actions).
-    log_p_indices = log_p_indices * num_actions
-    # indices in flattened form of log_p that correspond to actions taken.
-    log_p_indices = log_p_indices + self.actions
-    # finally uses these to fetch the action log probs taken.
-    action_log_p = tf.gather(tf.reshape(self.log_p, [-1]),
-                             log_p_indices)
+    # we then use a mask to only select the elements of the softmaxs that correspond
+    # to the actions we actually took. we could also do this by complex indexing and a
+    # gather but i always think this is more natural. the "cost" of dealing with the
+    # mostly zero one hot, as opposed to doing a gather on sparse indexes, isn't a big
+    # deal when the number of observations is >> number of actions.
+    self.action_mask = tf.one_hot(indices=self.actions, depth=num_actions)
+    self.action_prob = tf.reduce_sum(self.softmax * self.action_mask, reduction_indices=1)
+    self.action_log_p = tf.log(self.action_prob)
 
     # the (element wise) product of these action log_p's with the total reward of the
     # episode represents the quantity we want to maximise. we standardise the advantage
     # values so roughly 1/2 +ve / -ve as a variance control.
-    action_mul_advantages = tf.mul(action_log_p,
+    self.action_mul_advantages = tf.mul(self.action_log_p,
                                    util.standardise(self.advantages))
-    self.loss = -tf.reduce_sum(action_mul_advantages)  # recall: we are maximising.
+    self.loss = -tf.reduce_sum(self.action_mul_advantages)  # recall: we are maximising.
     self.train_op = optimiser.minimize(self.loss)
 
   def sample_action_given(self, observation):
