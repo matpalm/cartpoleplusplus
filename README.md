@@ -1,10 +1,11 @@
 # cartpole ++
 
-implementing a non trivial 3d cartpole [gym](https://gym.openai.com/) environment using [bullet physics](http://bulletphysics.org/)
+implementing a non trivial 3d cartpole [gym](https://gym.openai.com/)
+environment using [bullet physics](http://bulletphysics.org/)
 trained with 
 
 * a [dqn](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf) from [keras-rl](https://github.com/matthiasplappert/keras-rl)
-* a hand rolled simple policy gradient method
+* a hand rolled simple policy gradient method  (pg_cartpole.py)
 
 see [the blog post](http://matpalm.com/blog/cartpole_plus_plus/) for loads more info...
 
@@ -75,20 +76,23 @@ $ ./dqn_bullet_cartpole.py \
 
 ## training based on policy gradient
 
+policy gradient nails it; though this is after >12hrs training :/
+
 ```
-$ ./pg_cartpole.py --rollouts-per-batch=20 --num-train-batches=1000 \
+$ ./pg_cartpole.py --rollouts-per-batch=20 --num-train-batches=100 \
  --ckpt-dir=ckpts/foo
 ```
 
 by numbers...
 
 ```
-[   8.    25.    35.    43.7   48.6   62.5   76.4  100.6  127.   176.1   200. ]
+# deciles
+[  13.    70.6  195.8  200.   200.   200.   200.   200.   200.   200.   200. ]
 ```
 
 visually... 
 
-[![link](https://img.youtube.com/vi/J2syEP_L2-c/0.jpg)](https://www.youtube.com/watch?v=J2syEP_L2-c)
+[![link](https://img.youtube.com/vi/U4VlBx1K0AE/0.jpg)](https://www.youtube.com/watch?v=U4VlBx1K0AE)
 
 ## TODOS
 
