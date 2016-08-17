@@ -92,7 +92,7 @@ by numbers...
 
 visually... 
 
-[![link](https://img.youtube.com/vi/U4VlBx1K0AE/0.jpg)](https://www.youtube.com/watch?v=U4VlBx1K0AE)
+[![link](https://img.youtube.com/vi/aricda9gs2I/0.jpg)](https://www.youtube.com/watch?v=aricda9gs2I)
 
 ## TODOS
 
