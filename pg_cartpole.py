@@ -7,7 +7,7 @@ import json
 import numpy as np
 import sys
 import tensorflow as tf
-import tflearn as tfl
+import tensorflow.contrib.slim as slim
 import util
 
 np.set_printoptions(precision=5, threshold=10000, suppress=True, linewidth=10000)
@@ -56,20 +56,20 @@ class PolicyGradientAgent(object):
     self.observations = tf.placeholder(shape=[None, observation_dim],
                                        dtype=tf.float32)
     # the actions we took during rollout
-    self.actions = tf.placeholder(tf.int32)
+    self.actions = tf.placeholder(tf.int32, name='actions')
     # the advantages we got from taken 'action_taken' in 'observation'
-    self.advantages = tf.placeholder(tf.float32)
+    self.advantages = tf.placeholder(tf.float32, name='advantages')
 
     # our model is a very simple MLP
-    hidden = tfl.fully_connected(self.observations,
-                                 n_units=hidden_dim,
-                                 activation='tanh')
-    self.logits = tfl.fully_connected(hidden,
-                                      n_units=num_actions)
+    hidden = slim.fully_connected(inputs=self.observations,
+                                       num_outputs=hidden_dim,
+                                       activation_fn=tf.nn.tanh)
+    logits = slim.fully_connected(inputs=hidden,
+                                       num_outputs=num_actions)
 
     # for rollouts we need an op that samples actions from this
     # model to give a stochastic action.
-    sample_action = tf.multinomial(self.logits, num_samples=1),
+    sample_action = tf.multinomial(logits, num_samples=1),
     self.sampled_action_op = tf.reshape(sample_action, shape=[])
 
     # we are trying to maximise the product of two components...
@@ -80,24 +80,24 @@ class PolicyGradientAgent(object):
     # took by sampling...
     # first we run a softmax over the action logits to get probabilities.
     # ( +epsilon to avoid near zero instabilities )
-    self.softmax = tf.nn.softmax(self.logits + 1e-20)
-    self.softmax = tf.verify_tensor_all_finite(self.softmax, msg="softmax")
+    softmax = tf.nn.softmax(logits + 1e-20)
+    softmax = tf.verify_tensor_all_finite(softmax, msg="softmax")
 
     # we then use a mask to only select the elements of the softmaxs that correspond
     # to the actions we actually took. we could also do this by complex indexing and a
     # gather but i always think this is more natural. the "cost" of dealing with the
     # mostly zero one hot, as opposed to doing a gather on sparse indexes, isn't a big
     # deal when the number of observations is >> number of actions.
-    self.action_mask = tf.one_hot(indices=self.actions, depth=num_actions)
-    self.action_prob = tf.reduce_sum(self.softmax * self.action_mask, reduction_indices=1)
-    self.action_log_p = tf.log(self.action_prob)
+    action_mask = tf.one_hot(indices=self.actions, depth=num_actions)
+    action_prob = tf.reduce_sum(softmax * action_mask, reduction_indices=1)
+    action_log_prob = tf.log(action_prob)
 
     # the (element wise) product of these action log_p's with the total reward of the
     # episode represents the quantity we want to maximise. we standardise the advantage
     # values so roughly 1/2 +ve / -ve as a variance control.
-    self.action_mul_advantages = tf.mul(self.action_log_p,
+    action_mul_advantages = tf.mul(action_log_prob,
                                    util.standardise(self.advantages))
-    self.loss = -tf.reduce_sum(self.action_mul_advantages)  # recall: we are maximising.
+    self.loss = -tf.reduce_sum(action_mul_advantages)  # recall: we are maximising.
     self.train_op = optimiser.minimize(self.loss)
 
   def sample_action_given(self, observation):
@@ -166,8 +166,7 @@ class PolicyGradientAgent(object):
   def run_eval(self, num_eval):
     for _ in xrange(num_eval):
       _, _, rewards = self.rollout()
-      total_rewards = sum(rewards)
-      print total_rewards
+      print sum(rewards)
 
     
 def main():
