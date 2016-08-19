@@ -13,7 +13,7 @@ def standardise(tensor):
 class SaverUtil(object):
   def __init__(self, sess, ckpt_dir="/tmp", save_freq=60):
     self.sess = sess
-    self.saver = tf.train.Saver()
+    self.saver = tf.train.Saver(max_to_keep=1000)
     self.ckpt_dir = ckpt_dir
     if not os.path.exists(self.ckpt_dir):
       os.makedirs(self.ckpt_dir)
