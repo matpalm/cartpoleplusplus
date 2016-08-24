@@ -9,7 +9,7 @@ import sys
 import time
 
 np.set_printoptions(precision=3, suppress=True, linewidth=10000)
-    
+
 def state_fields_of_pose_of(body_id):
   pose = p.getBasePositionAndOrientation(body_id)
   (x, y, _z), (oa, ob, oc, od) = pose
@@ -25,7 +25,8 @@ class BulletCartpole(gym.Env):
 
   def __init__(self, gui=True, delay=0.0, max_episode_len=200, action_force=50.0,
                initial_force=55.0, include_cart_in_state=True, random_theta=True,
-               calc_explicit_delta=True ):
+               calc_explicit_delta=True, discrete_actions=True):
+
     self.gui = gui
     self.delay = delay if gui else 0.0
 
@@ -40,13 +41,16 @@ class BulletCartpole(gym.Env):
     self.angle_threshold = 0.3  # radians; ~= 12deg
 
     # force to apply per action simulation step.
+    # in the discrete case this is the fixed force applied
+    # in the continuous case each x/y is in range (-F, F)
     self.action_force = action_force
 
     # apply action for this many sim time steps.
     self.sim_step_rate = 10
 
-    # initial push force. this should be enough that taking no action
-    # will always result in pole falling after initial_force_steps.
+    # initial push force. this should be enough that taking no action will always
+    # result in pole falling after initial_force_steps but not so much that you
+    # can't recover. see also initial_force_steps.
     self.initial_force = initial_force
 
     # number of sim steps initial force is applied.
@@ -64,8 +68,15 @@ class BulletCartpole(gym.Env):
     # if true state is (current, current-last) else state is (current, last)
     self.calc_explicit_delta = calc_explicit_delta
 
+    # true if action space is discrete; 5 values; no push, left, right, up & down
+    # false if action space is continuous; fx, fy both (-action_force, action_force)
+    self.discrete_actions = discrete_actions
+
     # 5 discrete actions: no push, left, right, up, down
-    self.action_space = spaces.Discrete(5)  
+    if self.discrete_actions:
+      self.action_space = spaces.Discrete(5)
+    else:
+      self.action_space = spaces.Box(-action_force, action_force, shape=(1, 2))
 
     # obs space for problem is
     # for pole: pos x/y, orientation a,b,c,d
@@ -114,18 +125,21 @@ class BulletCartpole(gym.Env):
 
     # based on action decide the x and y forces
     fx = fy = 0
-    if action == 0:
-      pass
-    elif action == 1:
-      fx = self.action_force
-    elif action == 2:
-      fx = -self.action_force
-    elif action == 3:
-      fy = self.action_force
-    elif action == 4:
-      fy = -self.action_force
+    if self.discrete_actions:
+      if action == 0:
+        pass
+      elif action == 1:
+        fx = self.action_force
+      elif action == 2:
+        fx = -self.action_force
+      elif action == 3:
+        fy = self.action_force
+      elif action == 4:
+        fy = -self.action_force
+      else:
+        raise Exception("unknown discrete action [%s]" % action)
     else:
-      raise Exception("unknown action [%s]" % action)
+      fx, fy = action[0]
 
     # step simulation forward a bit.
     for _ in xrange(self.sim_step_rate):
@@ -170,7 +184,7 @@ class BulletCartpole(gym.Env):
                              self.current_state - self.last_state])
     else:
       return np.concatenate([self.current_state, self.last_state])
- 
+
   def _reset(self):
     # reset state
     self.steps = 0
