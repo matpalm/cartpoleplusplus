@@ -46,8 +46,7 @@ sys.stderr.write("%s\n" % opts)
 EPSILON = 1e-3
 
 class PolicyGradientAgent(object):
-  def __init__(self, sess, env, hidden_dim, optimiser, gui=False):
-    self.sess = sess
+  def __init__(self, env, hidden_dim, optimiser, gui=False):
     self.env = env
     self.gui = gui
 
@@ -107,8 +106,8 @@ class PolicyGradientAgent(object):
 
   def sample_action_given(self, observation):
     """ sample one action given observation"""
-    return self.sess.run(self.sampled_action_op,
-                         feed_dict={self.observations: [observation]})
+    return tf.get_default_session().run(self.sampled_action_op,
+                                        feed_dict={self.observations: [observation]})
 
   def rollout(self):
     """ run one episode collecting observations, actions and advantages"""
@@ -127,10 +126,10 @@ class PolicyGradientAgent(object):
 
   def train(self, observations, actions, advantages):
     """ take one training step given observations, actions and subsequent advantages"""
-    _, loss = self.sess.run([self.train_op, self.loss],
-                            feed_dict={self.observations: observations,
-                                       self.actions: actions,
-                                       self.advantages: advantages })
+    _, loss = tf.get_default_session().run([self.train_op, self.loss],
+                                           feed_dict={self.observations: observations,
+                                                      self.actions: actions,
+                                                      self.advantages: advantages })
     return float(loss)
 
   def run_training(self, num_batches, rollouts_per_batch, saver_util):
@@ -142,7 +141,7 @@ class PolicyGradientAgent(object):
       # perform a number of rollouts
       batch_observations, batch_actions, batch_advantages = [], [], []
       total_rewards = []
-      for _ in xrange(rollouts_per_batch):    
+      for _ in xrange(rollouts_per_batch):
         observations, actions, rewards = self.rollout()
         batch_observations += observations
         batch_actions += actions
@@ -161,7 +160,7 @@ class PolicyGradientAgent(object):
         loss = self.train(batch_observations, batch_actions, batch_advantages)
 
       # dump some stats
-      stats = {"time": int(time.time()), 
+      stats = {"time": int(time.time()),
                "batch": batch_id,
                "rewards": total_rewards,
                "loss": loss}
@@ -186,15 +185,16 @@ class PolicyGradientAgent(object):
       _, _, rewards = self.rollout()
       print sum(rewards)
 
-    
+
 def main():
   env = bullet_cartpole.BulletCartpole(gui=opts.gui, action_force=opts.action_force,
                                        max_episode_len=opts.max_episode_len,
                                        initial_force=opts.initial_force, delay=opts.delay,
-                                       calc_explicit_delta=opts.calc_explicit_delta)
+                                       calc_explicit_delta=opts.calc_explicit_delta,
+                                       discrete_actions=True)
 
   with tf.Session() as sess:
-    agent = PolicyGradientAgent(sess=sess, env=env, gui=opts.gui,
+    agent = PolicyGradientAgent(env=env, gui=opts.gui,
                                 hidden_dim=opts.num_hidden,
                                 optimiser=tf.train.AdamOptimizer())
 
@@ -214,7 +214,7 @@ def main():
     if opts.num_eval > 0:
       agent.run_eval(opts.num_eval)
     else:
-      agent.run_training(opts.num_train_batches, opts.rollouts_per_batch, 
+      agent.run_training(opts.num_train_batches, opts.rollouts_per_batch,
                          saver_util)
       if saver_util is not None:
         saver_util.force_save()
