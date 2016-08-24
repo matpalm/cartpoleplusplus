@@ -65,11 +65,12 @@ class PolicyGradientAgent(object):
     self.advantages = tf.placeholder(tf.float32, name='advantages')
 
     # our model is a very simple MLP
-    hidden = slim.fully_connected(inputs=self.observations,
-                                       num_outputs=hidden_dim,
-                                       activation_fn=tf.nn.tanh)
-    logits = slim.fully_connected(inputs=hidden,
-                                       num_outputs=num_actions)
+    with tf.variable_scope("model"):
+      hidden = slim.fully_connected(inputs=self.observations,
+                                    num_outputs=hidden_dim,
+                                    activation_fn=tf.nn.tanh)
+      logits = slim.fully_connected(inputs=hidden,
+                                    num_outputs=num_actions)
 
     # for rollouts we need an op that samples actions from this
     # model to give a stochastic action.
@@ -102,7 +103,8 @@ class PolicyGradientAgent(object):
     action_mul_advantages = tf.mul(action_log_prob,
                                    util.standardise(self.advantages))
     self.loss = -tf.reduce_sum(action_mul_advantages)  # recall: we are maximising.
-    self.train_op = optimiser.minimize(self.loss)
+    with tf.variable_scope("optimiser"):
+      self.train_op = optimiser.minimize(self.loss)
 
   def sample_action_given(self, observation):
     """ sample one action given observation"""
