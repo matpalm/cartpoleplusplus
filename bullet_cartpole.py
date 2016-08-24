@@ -24,7 +24,8 @@ class BulletCartpole(gym.Env):
   }
 
   def __init__(self, gui=True, delay=0.0, max_episode_len=200, action_force=50.0,
-               initial_force=55.0, include_cart_in_state=True, random_theta=True):
+               initial_force=55.0, include_cart_in_state=True, random_theta=True,
+               calc_explicit_delta=True ):
     self.gui = gui
     self.delay = delay if gui else 0.0
 
@@ -59,6 +60,9 @@ class BulletCartpole(gym.Env):
     # whether we do initial push in a random direction
     # if false we always push with along x-axis (simplee problem, useful for debugging)
     self.random_theta = random_theta
+
+    # if true state is (current, current-last) else state is (current, last)
+    self.calc_explicit_delta = calc_explicit_delta
 
     # 5 discrete actions: no push, left, right, up, down
     self.action_space = spaces.Discrete(5)  
@@ -121,8 +125,7 @@ class BulletCartpole(gym.Env):
     elif action == 4:
       fy = -self.action_force
     else:
-      print >>sys.stderr, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! unknown action? [%s].... assuming 0" % action
-#      raise Exception("unknown action [%s]" % action)
+      raise Exception("unknown action [%s]" % action)
 
     # step simulation forward a bit.
     for _ in xrange(self.sim_step_rate):
@@ -162,10 +165,12 @@ class BulletCartpole(gym.Env):
     self.current_state = self.pole_and_cart_state()
 
   def observation_state(self):
-    # TODO: try with current & last (i.e. not an explicit delta)
-    return np.concatenate([self.current_state,
-                           self.current_state - self.last_state])
-
+    if self.calc_explicit_delta:
+      return np.concatenate([self.current_state,
+                             self.current_state - self.last_state])
+    else:
+      return np.concatenate([self.current_state, self.last_state])
+ 
   def _reset(self):
     # reset state
     self.steps = 0

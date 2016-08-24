@@ -1,6 +1,7 @@
 ckpts
 *h5
 *out
+*stats
 *tsv
 venv
 *pyc
