@@ -139,7 +139,8 @@ class BulletCartpole(gym.Env):
       else:
         raise Exception("unknown discrete action [%s]" % action)
     else:
-      fx, fy = action[0]
+      fx, fy = action[0] * self.action_force
+    print "BULLET", fx, fy
 
     # step simulation forward a bit.
     for _ in xrange(self.sim_step_rate):
