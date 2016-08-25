@@ -5,7 +5,7 @@ environment using [bullet physics](http://bulletphysics.org/)
 trained with 
 
 * a [dqn](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf) from [keras-rl](https://github.com/matthiasplappert/keras-rl)
-* a hand rolled simple policy gradient method  (pg_cartpole.py)
+* a hand rolled likelihood ratio policy gradient method  (lrpg_cartpole.py)
 
 see [the blog post](http://matpalm.com/blog/cartpole_plus_plus/) for loads more info...
 
@@ -79,18 +79,18 @@ $ ./dqn_bullet_cartpole.py \
 policy gradient nails it; though this is after >12hrs training :/
 
 ```
-$ ./pg_cartpole.py --rollouts-per-batch=20 --num-train-batches=100 \
+$ ./lrpg_cartpole.py --rollouts-per-batch=20 --num-train-batches=100 \
  --ckpt-dir=ckpts/foo
 ```
 
-by numbers...
+result by numbers...
 
 ```
 # deciles
 [  13.    70.6  195.8  200.   200.   200.   200.   200.   200.   200.   200. ]
 ```
 
-visually... 
+result visually (click through for video)
 
 [![link](https://img.youtube.com/vi/aricda9gs2I/0.jpg)](https://www.youtube.com/watch?v=aricda9gs2I)
 

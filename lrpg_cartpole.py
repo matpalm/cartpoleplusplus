@@ -45,7 +45,7 @@ sys.stderr.write("%s\n" % opts)
 
 EPSILON = 1e-3
 
-class PolicyGradientAgent(object):
+class LikelihoodRatioPolicyGradientAgent(object):
   def __init__(self, env, hidden_dim, optimiser, gui=False):
     self.env = env
     self.gui = gui
@@ -196,9 +196,9 @@ def main():
                                        discrete_actions=True)
 
   with tf.Session() as sess:
-    agent = PolicyGradientAgent(env=env, gui=opts.gui,
-                                hidden_dim=opts.num_hidden,
-                                optimiser=tf.train.AdamOptimizer())
+    agent = LikelihoodRatioPolicyGradientAgent(env=env, gui=opts.gui,
+                                               hidden_dim=opts.num_hidden,
+                                               optimiser=tf.train.AdamOptimizer())
 
     # setup saver util; will load latest ckpt, or init if none...
     saver_util = None
