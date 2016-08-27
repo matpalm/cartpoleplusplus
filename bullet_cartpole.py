@@ -140,7 +140,6 @@ class BulletCartpole(gym.Env):
         raise Exception("unknown discrete action [%s]" % action)
     else:
       fx, fy = action[0] * self.action_force
-    print "BULLET", fx, fy
 
     # step simulation forward a bit.
     for _ in xrange(self.sim_step_rate):
@@ -150,6 +149,17 @@ class BulletCartpole(gym.Env):
         time.sleep(self.delay)
     self.steps += 1
 
+    # calculate reward.
+    reward = None
+    if self.discrete_actions:
+      reward = 1.0
+    else:
+      # base reward of 1.0 but linear ramp up to 5.0 if you don't apply much force.
+      max_abs_force = self.action_force * 2
+      abs_force = abs(fx) + abs(fy)
+      reward = 1.0 + 4.0 - (4.0 * abs_force / max_abs_force)
+      assert reward >= 0  # TODO REMOVE
+
     # Check for out of bounds by position or orientation on pole.
     # we (re)fetch pose explicitly rather than depending on fields in state.
     (x, y, _z), orient = p.getBasePositionAndOrientation(self.pole)
@@ -157,9 +167,11 @@ class BulletCartpole(gym.Env):
     if abs(x) > self.pos_threshold or abs(y) > self.pos_threshold:
       info['done_reason'] = 'out of position bounds'
       self.done = True
+      reward = 0.0
     elif abs(ox) > self.angle_threshold or abs(oy) > self.angle_threshold:
       info['done_reason'] = 'out of orientation bounds'
       self.done = True
+      reward = 0.0
     # check for end of episode (by length)
     if self.steps >= self.max_episode_len:
       info['done_reason'] = 'episode length'
@@ -167,7 +179,7 @@ class BulletCartpole(gym.Env):
 
     # return observation tuple
     self.update_current_state()
-    return self.observation_state(), 1.0, self.done, info
+    return self.observation_state(), reward, self.done, info
 
   def pole_and_cart_state(self):
     states = [state_fields_of_pose_of(self.pole)]
