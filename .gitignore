@@ -1,3 +1,5 @@
+event_logs
+event_pb2.py
 ckpts
 *h5
 *out
