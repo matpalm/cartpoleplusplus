@@ -4,10 +4,17 @@ implementing a non trivial 3d cartpole [gym](https://gym.openai.com/)
 environment using [bullet physics](http://bulletphysics.org/)
 trained with 
 
-* a [dqn](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf) from [keras-rl](https://github.com/matthiasplappert/keras-rl)
-* a hand rolled likelihood ratio policy gradient method  (lrpg_cartpole.py)
+* a [deep q network](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf) from [keras-rl](https://github.com/matthiasplappert/keras-rl)
+* a likelihood ratio policy gradient method (lrpg_cartpole.py) for the discrete control version
+* a [deep deterministic policy gradient method](http://arxiv.org/abs/1509.02971) (ddpg_cartpole.py) for the continuous control version
 
-see [the blog post](http://matpalm.com/blog/cartpole_plus_plus/) for loads more info...
+observation state is 28d tuple
+* 7d pose of cart (3d position + 4d quaternion orientation)
+* 7d pose of pole (also included since pole isn't connected to cart)
+* 7d pose of cart last time step
+* 7d pose of pole last time step
+
+see [the blog post](http://matpalm.com/blog/cartpole_plus_plus/) for more info...
 
 ```
 # some random things i did...
@@ -22,9 +29,14 @@ export PYTHONPATH=$PYTHONPATH:$HOME/dev/keras-rl
 protoc event.proto --python_path=.
 ```
 
-## before training
+## discrete version
 
-based on behaviour of random action agent (click through for video)
+* 5 actions; go left, right, up, down, do nothing
+* +1 reward for each step pole is up.
+
+### random agent
+
+example behaviour of random action agent (click through for video)
 
 [![link](https://img.youtube.com/vi/buSAT-3Q8Zs/0.jpg)](https://www.youtube.com/watch?v=buSAT-3Q8Zs)
 
@@ -48,7 +60,7 @@ $ ./random_action_agent.py --initial-force=55 --actions="0,1,2,3,4" --num-eval=1
 [  3.    5.9   7.    7.7   8.    9.   10.   11.   13.   15.   32. ]
 ```
 
-## training a dqn 
+### training a dqn
 
 ```
 $ ./dqn_bullet_cartpole.py \
@@ -77,7 +89,7 @@ $ ./dqn_bullet_cartpole.py \
  --num-train=0 --num-eval=100
 ```
 
-## training based on policy gradient
+### training using likelihood ratio policy gradient
 
 policy gradient nails it; though this is after >12hrs training :/
 
@@ -97,3 +109,31 @@ result visually (click through for video)
 
 [![link](https://img.youtube.com/vi/aricda9gs2I/0.jpg)](https://www.youtube.com/watch?v=aricda9gs2I)
 
+## continuous version
+
+* 2d action; force to apply on cart in x & y directions
+* +1 base reward for each step pole is up. up to an additional +4 as force applied tends to 0.
+
+### training using deep deterministic policy gradient
+
+```
+./ddpg_cartpole.py \
+ --actor-hidden-layers="100,100,50" --critic-hidden-layers="100,100,50" \
+ --action-force=100 --action-noise-sigma=0.1 --batch-size=256 \
+ --max-num-actions=1000000 --ckpt-dir=ckpts/run43
+```
+
+result by numbers
+
+```
+# episode len deciles
+[  13.    23.8   28.    33.    36.6   43.    49.    58.    73.    90.2  200. ]
+# reward deciles
+[  26.49173813   53.29547295   69.89423669   87.80496202  118.0259743
+  123.87795639  154.4454325   188.9978803   257.4185117   336.31455274
+  918.93545607]
+```
+
+result visually (click through for video)
+
+[![link](https://img.youtube.com/vi/IJHCKKF9I8M/0.jpg)](https://www.youtube.com/watch?v=IJHCKKF9I8M)
