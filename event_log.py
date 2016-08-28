@@ -48,8 +48,9 @@ class EventLogReader(object):
 
 if __name__ == "__main__":
   import sys
-  for episode in EventLogReader(sys.argv[1]).entries():
-    print "-----"
+  elr = EventLogReader(sys.argv[1])
+  for i, episode in enumerate(elr.entries()):
+    print "-----", i
     print episode
     
     
