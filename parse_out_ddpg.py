@@ -19,7 +19,8 @@ f_q_loss = open("/tmp/q_loss", "w")
 f_q_loss.write("time q_loss\n")
 
 freq = Counter()
-emit_freq = {"EVAL": 1, "ACTOR_L2_NORM": 20, "CRITIC_L2_NORM": 20, "Q LOSS": 10}
+emit_freq = {"EVAL": 1, "ACTOR_L2_NORM": 20, "CRITIC_L2_NORM": 20, 
+             "Q LOSS": 1, "EXPECTED_Q_VALUES": 1}
 def should_emit(tag):
   freq[tag] += 1
   return freq[tag] % (emit_freq[tag] if tag in emit_freq else 100) == 0
@@ -28,13 +29,8 @@ n_parse_errors = 0
 
 time = None
 for line in sys.stdin:
-  if line.startswith("TIME"):
-    time = line.strip().replace("TIME ", "")
-    continue
-  if time is None:
-    continue
-
   line = line.strip()
+
   if line.startswith("STATS"):
     cols = line.split("\t")
     assert len(cols) == 2
@@ -44,10 +40,14 @@ for line in sys.stdin:
         episode = d["episode"]
         total_reward = d["total_reward"]
         episode_len = d["episode_len"] if "episode_len" in d else total_reward
+        time = d["time"]
         f_episode_len.write("%s %s %s\n" % (episode, episode_len, total_reward))
     except ValueError:
       # interleaving output :/
       n_parse_errors += 1
+
+  if time is None:
+    continue
 
   elif "actor gradient l2_norm" in line and should_emit("ACTOR_L2_NORM"):
     norm = re.sub(".*\[", "", line).replace("]", "")
@@ -71,7 +71,9 @@ for line in sys.stdin:
     f_q_values.write("%s main %f\n" % (time, float(cols[1])))
     f_q_values.write("%s target %f\n" % (time, float(cols[2])))
 
-  elif line.startswith("EVAL") and should_emit("EVAL"):
+  elif line.startswith("EVAL") \
+       and not line.startswith("EVALSTEP") \
+       and should_emit("EVAL"):
     cols = line.split(" ")
     if len(cols) == 2:  # OLD FORMAT
       tag, steps = cols
