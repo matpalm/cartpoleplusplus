@@ -15,7 +15,6 @@ import util
 np.set_printoptions(precision=5, threshold=10000, suppress=True, linewidth=10000)
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-#parser.add_argument('--num-hidden', type=int, default=32)  TODO USE!
 parser.add_argument('--num-eval', type=int, default=0,
                     help="if >0 just run this many episodes with no training")
 parser.add_argument('--max-num-actions', type=int, default=1000,
@@ -25,9 +24,7 @@ parser.add_argument('--run-id', type=str, default=None,
                     help="if set use --ckpt-dir=ckpts/<run-id> and write stats to <run-id>.stats")
 parser.add_argument('--ckpt-dir', type=str, default=None, help="if set save ckpts to this dir")
 parser.add_argument('--ckpt-freq', type=int, default=300, help="freq (sec) to save ckpts")
-parser.add_argument('--batch-size', type=int, default=16, help="training batch size")
-#parser.add_argument('--training-action-freq', type=int, default=1,
-#                    help="run a training batch every --training-action-freq actions")
+parser.add_argument('--batch-size', type=int, default=128, help="training batch size")
 parser.add_argument('--target-update-rate', type=float, default=0.001,
                     help="affine combo for updating target networks each time we run a training batch")
 parser.add_argument('--actor-learning-rate', type=float, default=0.001, help="learning rate for actor")
@@ -36,7 +33,7 @@ parser.add_argument('--actor-gradient-clip', type=float, default=50.0, help="cli
 parser.add_argument('--critic-gradient-clip', type=float, default=50.0, help="clip critic gradients at this l2 norm")
 parser.add_argument('--actor-activation-init-magnitude', type=float, default=0.001,
                     help="weight magnitude for actor final activation. explicitly near zero to force near zero predictions initially")
-parser.add_argument('--replay-memory-size', type=int, default=50000, help="max size of replay memory")
+parser.add_argument('--replay-memory-size', type=int, default=100000, help="max size of replay memory")
 parser.add_argument('--action-noise-theta', type=float, default=0.01,
                     help="OrnsteinUhlenbeckNoise theta (rate of change) param for action exploration")
 parser.add_argument('--action-noise-sigma', type=float, default=0.2,
@@ -51,8 +48,6 @@ parser.add_argument('--action-force', type=float, default=50.0,
                     help="magnitude of action push")
 opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
-
-EPSILON = 1e-3
 
 
 class Network(object):
@@ -120,12 +115,12 @@ class ActorNetwork(Network):
       # TODO: config for net
       hidden = slim.fully_connected(scope='h1',
                                     inputs=self.input_state,
-                                    num_outputs=200,
+                                    num_outputs=100,
                                     weights_regularizer=tf.contrib.layers.l2_regularizer(0.01),
                                     activation_fn=tf.nn.relu)
       hidden = slim.fully_connected(scope='h2',
                                     inputs=hidden,
-                                    num_outputs=100,
+                                    num_outputs=50,
                                     weights_regularizer=tf.contrib.layers.l2_regularizer(0.01),
                                     activation_fn=tf.nn.relu)
       weights_initializer = tf.random_uniform_initializer(-actor_activation_init_magnitude,
@@ -196,14 +191,15 @@ class CriticNetwork(Network):
     with tf.variable_scope(namespace):
       concat_inputs = tf.concat(1, [self.input_state, self.input_action])
       # TODO: config for net
+      # TODO: don't add action until later in stack?
       hidden = slim.fully_connected(scope='h1',
                                     inputs=concat_inputs,
-                                    num_outputs=200,
+                                    num_outputs=100,
                                     weights_regularizer=tf.contrib.layers.l2_regularizer(0.01),
                                     activation_fn=tf.nn.relu)
       hidden = slim.fully_connected(scope='h2',
                                     inputs=hidden,
-                                    num_outputs=100,
+                                    num_outputs=50,
                                     weights_regularizer=tf.contrib.layers.l2_regularizer(0.01),
                                     activation_fn=tf.nn.relu)
       # output from critic is a single q-value
@@ -339,8 +335,8 @@ class DeepDeterministicPolicyGradientAgent(object):
         state_2, reward, done, _ = self.env.step(action)
         # add to replay memory
         self.replay_memory.add(state_1, action, reward, done, state_2)
-        # do a training step
-        if self.replay_memory.size() > batch_size:
+        # do a training step (after waiting for buffer to fill a bit...)
+        if self.replay_memory.size() > batch_size * 10:
           state_1_b, action_b, reward_b, terminal_mask_b, state_2_b = self.replay_memory.random_batch(batch_size)
           self.actor.train(state_1_b)
           self.critic.train(state_1_b, action_b, reward_b, terminal_mask_b, state_2_b)
@@ -405,7 +401,8 @@ def main():
                                        initial_force=opts.initial_force, delay=opts.delay,
                                        calc_explicit_delta=False,  # i.e. state = (current, last)
                                        discrete_actions=False)
-  with tf.Session() as sess:
+
+  with tf.Session() as sess:  #config=tf.ConfigProto(log_device_placement=True)) as sess:
     agent = DeepDeterministicPolicyGradientAgent(env=env, agent_opts=opts)
 
     # setup saver util and either load latest ckpt, or init if none...
@@ -431,9 +428,6 @@ def main():
       agent.run_training(opts.max_num_actions, opts.batch_size, saver_util, opts.run_id)
       if saver_util is not None:
         saver_util.force_save()
-
-    print "FINAL WEIGHTS"
-    agent.debug_dump_network_weights()
 
 if __name__ == "__main__":
   main()
