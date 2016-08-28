@@ -4,10 +4,12 @@ import bullet_cartpole
 import random
 import time
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--gui', action='store_true')
 parser.add_argument('--initial-force', type=float, default=20.0,
                     help="magnitude of initial push, in random direction")
+parser.add_argument('--event-log', type=str, default=None,
+                    help="path to record event log.")
 parser.add_argument('--actions', type=str, default='0,1,2,3,4',
                     help='comma seperated list of actions to pick from, if env is discrete')
 parser.add_argument('--num-eval', type=int, default=1000)
@@ -27,7 +29,8 @@ else:
   raise Exception("Unknown action type [%s]" % opts.action_type)
 
 env = bullet_cartpole.BulletCartpole(gui=opts.gui, initial_force=opts.initial_force,
-                                     discrete_actions=discrete_actions)
+                                     discrete_actions=discrete_actions,
+                                     event_log_file=opts.event_log)
 
 for _ in xrange(opts.num_eval):
   env.reset()

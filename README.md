@@ -17,6 +17,9 @@ virtualenv venv --system-site-packages
 pip install keras numpy h5py 
 pip install <whatever_tensorflow_wheel_file>
 export PYTHONPATH=$PYTHONPATH:$HOME/dev/keras-rl
+
+# for replay logging will need to compile protobuffer
+protoc event.proto --python_path=.
 ```
 
 ## before training
@@ -94,6 +97,3 @@ result visually (click through for video)
 
 [![link](https://img.youtube.com/vi/aricda9gs2I/0.jpg)](https://www.youtube.com/watch?v=aricda9gs2I)
 
-## TODOS
-
-* invest in good logging of rollouts for quicker bootstrapping (saw huge payoffs with drivebot)

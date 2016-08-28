@@ -23,7 +23,8 @@ class BulletCartpole(gym.Env):
   }
 
   def __init__(self, gui=True, delay=0.0, max_episode_len=200, action_force=50.0,
-               initial_force=55.0, random_theta=True, discrete_actions=True):
+               initial_force=55.0, random_theta=True, discrete_actions=True,
+               event_log_file=None):
 
     self.gui = gui
     self.delay = delay if gui else 0.0
@@ -67,7 +68,14 @@ class BulletCartpole(gym.Env):
     if self.discrete_actions:
       self.action_space = spaces.Discrete(5)
     else:
-      self.action_space = spaces.Box(-action_force, action_force, shape=(1, 2))
+      self.action_space = spaces.Box(-1.0, 1.0, shape=(1, 2))
+
+    # open event log
+    if event_log_file:
+      import event_log
+      self.event_log = event_log.EventLog(event_log_file)
+    else:
+      self.event_log = None
 
     # obs space for problem is
     # for pole: pos x/y, orientation a,b,c,d
@@ -166,7 +174,11 @@ class BulletCartpole(gym.Env):
       info['done_reason'] = 'episode length'
       self.done = True
 
-    # return observation tuple
+    # log this event
+    if self.event_log:
+      self.event_log.add(self.current_state, self.done, action, reward)
+
+    # update state and return observation
     self.update_current_state()
     return self.observation_state(), reward, self.done, info
 
@@ -185,6 +197,10 @@ class BulletCartpole(gym.Env):
     # reset state
     self.steps = 0
     self.done = False
+
+    # reset event log (if applicable)
+    if self.event_log:
+      self.event_log.reset()
 
     # reset pole on cart in starting poses
     p.resetBasePositionAndOrientation(self.cart, (0,0,0.08), (0,0,0,1))

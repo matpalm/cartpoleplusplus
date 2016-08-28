@@ -1,0 +1,18 @@
+package cp;
+
+message State {
+  // poses are (px, py, pz, oa, ob, oc, od)
+  repeated float cart_pose = 1;
+  repeated float pole_pose = 2;
+}
+
+message Event {
+  optional State state = 1;
+  optional bool is_terminal = 2;
+  repeated float action = 3;
+  optional float reward = 4;
+}
+
+message Episode {
+  repeated Event event = 1;
+}

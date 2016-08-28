@@ -48,9 +48,11 @@ parser.add_argument('--initial-force', type=float, default=55.0,
                     help="magnitude of initial push, in random direction")
 parser.add_argument('--action-force', type=float, default=100.0,
                     help="magnitude of action push. recall: discrete case used 50.0")
+parser.add_argument('--event-log', type=str, default=None,
+                    help="path to record event log.")
+
 opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
-
 
 class Network(object):
   """Common class for actor/critic handling ops for making / updating target networks."""
@@ -386,10 +388,11 @@ class DeepDeterministicPolicyGradientAgent(object):
       while not done:
         action = self.actor.action_given([state], add_noise=False)
         state, reward, done, _ = self.env.step(action)
-        print "EVALSTEP r%s %s %s %s" % (i, steps, np.linalg.norm(action), reward)
+#        print "EVALSTEP r%s %s %s %s" % (i, steps, np.linalg.norm(action), reward)
         total_reward += reward
         steps += 1
-    print "EVAL", steps, total_reward
+      print "EVAL", i, steps, total_reward
+    self.env.reset()  # just to flush logging, clumsy :/
 
   def debug_dump_network_weights(self):
     for var in tf.all_variables():
@@ -400,8 +403,7 @@ def main():
   env = bullet_cartpole.BulletCartpole(gui=opts.gui, action_force=opts.action_force,
                                        max_episode_len=opts.max_episode_len,
                                        initial_force=opts.initial_force, delay=opts.delay,
-                                       calc_explicit_delta=False,
-                                       discrete_actions=False)
+                                       discrete_actions=False, event_log_file=opts.event_log)
 
   with tf.Session() as sess:  #config=tf.ConfigProto(log_device_placement=True)) as sess:
     agent = DeepDeterministicPolicyGradientAgent(env=env, agent_opts=opts)
