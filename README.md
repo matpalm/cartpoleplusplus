@@ -1,8 +1,11 @@
 # cartpole ++
 
-implementing a non trivial 3d cartpole [gym](https://gym.openai.com/)
-environment using [bullet physics](http://bulletphysics.org/)
-trained with 
+cartpole++ is a non trivial 3d version of cartpole 
+simulated using [bullet physics](http://bulletphysics.org/) where the pole isn't connected to the cart.
+
+![cartpole](cartpole.png)
+
+this repo contains a [gym env](https://gym.openai.com/) for this cartpole as well as example policies trained with ...
 
 * a [deep q network](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf) from [keras-rl](https://github.com/matthiasplappert/keras-rl)
 * a likelihood ratio policy gradient method (lrpg_cartpole.py) for the discrete control version
