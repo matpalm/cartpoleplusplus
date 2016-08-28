@@ -38,8 +38,6 @@ parser.add_argument('--initial-force', type=float, default=55.0,
                     help="magnitude of initial push, in random direction")
 parser.add_argument('--action-force', type=float, default=50.0,
                     help="magnitude of action push")
-parser.add_argument('--calc-explicit-delta', action='store_true',
-                    help="if true state is (current,current-last) else state is (current,last)")
 opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
 
@@ -192,7 +190,6 @@ def main():
   env = bullet_cartpole.BulletCartpole(gui=opts.gui, action_force=opts.action_force,
                                        max_episode_len=opts.max_episode_len,
                                        initial_force=opts.initial_force, delay=opts.delay,
-                                       calc_explicit_delta=opts.calc_explicit_delta,
                                        discrete_actions=True)
 
   with tf.Session() as sess:
