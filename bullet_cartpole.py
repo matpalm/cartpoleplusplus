@@ -83,17 +83,13 @@ class BulletCartpole(gym.Env):
     # and then the deltas, for the pole, and possibly the cart
     # we give *2 range for cutoff... and ignore bounds on deltas
     float_max = np.finfo(np.float32).max
-    # first half of observation state is the current time step info
-    bound = [self.pos_threshold*2] * 3   # pole pos x,y,z  (threshold*2 for slack)
-    bound += [float_max] * 4             # pole q orient a,b,c,d
-    bound += [self.pos_threshold*2] * 3  # cart pos x,y,z
-    bound += [float_max] * 4             # cart q orient a,b,c,d
-    # second half of the state is the last time step. don't 
-    # bother with bounds checks since it was effectively checked before
-    bound += [float_max] * 7             # pole x,y,z & a,b,c,d
-    bound += [float_max] * 7             # cart x,y,z & a,b,c,d
-    # use this bound as upper and lower bound
-    bound = np.array(bound)
+    # observation state space is ...
+    #  7 tuple for pose
+    #  * 2 for cart & pole
+    #  * 2 for current / last time step
+    # ( don't worry about correct bounds, we won't be sampling from
+    # these & just causes noises in output )
+    bound = np.array([float_max] * 7 * 2 * 2)
     self.observation_space = gym.spaces.Box(-bound, bound)
 
     p.connect(p.GUI if self.gui else p.DIRECT)
