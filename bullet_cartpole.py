@@ -11,9 +11,8 @@ import time
 np.set_printoptions(precision=3, suppress=True, linewidth=10000)
 
 def state_fields_of_pose_of(body_id):
-  pose = p.getBasePositionAndOrientation(body_id)
-  (x, y, _z), (oa, ob, oc, od) = pose
-  return np.asarray([x, y, oa, ob, oc, od])
+  (x,y,z), (a,b,c,d) = p.getBasePositionAndOrientation(body_id)
+  return np.array([x,y,z,a,b,c,d])
 
 class BulletCartpole(gym.Env):
 
@@ -24,8 +23,7 @@ class BulletCartpole(gym.Env):
   }
 
   def __init__(self, gui=True, delay=0.0, max_episode_len=200, action_force=50.0,
-               initial_force=55.0, include_cart_in_state=True, random_theta=True,
-               calc_explicit_delta=True, discrete_actions=True):
+               initial_force=55.0, random_theta=True, discrete_actions=True):
 
     self.gui = gui
     self.delay = delay if gui else 0.0
@@ -57,16 +55,9 @@ class BulletCartpole(gym.Env):
     # (see initial_force)
     self.initial_force_steps = 30
 
-    # whether to include the cart pose in state too.
-    # if false just include pole info.
-    self.include_cart_in_state = include_cart_in_state
-
     # whether we do initial push in a random direction
     # if false we always push with along x-axis (simplee problem, useful for debugging)
     self.random_theta = random_theta
-
-    # if true state is (current, current-last) else state is (current, last)
-    self.calc_explicit_delta = calc_explicit_delta
 
     # true if action space is discrete; 5 values; no push, left, right, up & down
     # false if action space is continuous; fx, fy both (-action_force, action_force)
@@ -85,16 +76,14 @@ class BulletCartpole(gym.Env):
     # we give *2 range for cutoff... and ignore bounds on deltas
     float_max = np.finfo(np.float32).max
     # first half of observation state is the current time step info
-    bound = [self.pos_threshold*2] * 2     # pole pos x,y  (threshold*2 for slack)
-    bound += [float_max] * 4               # pole q orient a,b,c,d
-    if self.include_cart_in_state:
-      bound += [self.pos_threshold*2] * 2  # cart pos x,y
-      bound += [float_max] * 4             # cart q orient a,b,c,d
-    # second half of the state is the delta from last state
-    # ( since it's current - last it's already been checked for bounds )
-    bound += [float_max] * 6               # pole x,y & a,b,c,d
-    if self.include_cart_in_state:
-      bound += [float_max] * 6             # cart x,y & a,b,c,d
+    bound = [self.pos_threshold*2] * 3   # pole pos x,y,z  (threshold*2 for slack)
+    bound += [float_max] * 4             # pole q orient a,b,c,d
+    bound += [self.pos_threshold*2] * 3  # cart pos x,y,z
+    bound += [float_max] * 4             # cart q orient a,b,c,d
+    # second half of the state is the last time step. don't 
+    # bother with bounds checks since it was effectively checked before
+    bound += [float_max] * 7             # pole x,y,z & a,b,c,d
+    bound += [float_max] * 7             # cart x,y,z & a,b,c,d
     # use this bound as upper and lower bound
     bound = np.array(bound)
     self.observation_space = gym.spaces.Box(-bound, bound)
@@ -182,21 +171,15 @@ class BulletCartpole(gym.Env):
     return self.observation_state(), reward, self.done, info
 
   def pole_and_cart_state(self):
-    states = [state_fields_of_pose_of(self.pole)]
-    if self.include_cart_in_state:
-      states.append(state_fields_of_pose_of(self.cart))
-    return np.concatenate(states)
+    return np.concatenate([state_fields_of_pose_of(self.pole),
+                           state_fields_of_pose_of(self.cart)])
 
   def update_current_state(self):
     self.last_state = self.current_state
     self.current_state = self.pole_and_cart_state()
 
   def observation_state(self):
-    if self.calc_explicit_delta:
-      return np.concatenate([self.current_state,
-                             self.current_state - self.last_state])
-    else:
-      return np.concatenate([self.current_state, self.last_state])
+    return np.concatenate([self.current_state, self.last_state])
 
   def _reset(self):
     # reset state
