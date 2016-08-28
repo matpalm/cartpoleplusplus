@@ -31,8 +31,8 @@ parser.add_argument('--actor-hidden-layers', type=str, default="100,100,50", hel
 parser.add_argument('--critic-hidden-layers', type=str, default="100,100,50", help="actor hidden layer sizes")
 parser.add_argument('--actor-learning-rate', type=float, default=0.001, help="learning rate for actor")
 parser.add_argument('--critic-learning-rate', type=float, default=0.01, help="learning rate for critic")
-parser.add_argument('--actor-gradient-clip', type=float, default=100.0, help="clip actor gradients at this l2 norm")
-parser.add_argument('--critic-gradient-clip', type=float, default=100.0, help="clip critic gradients at this l2 norm")
+parser.add_argument('--actor-gradient-clip', type=float, default=None, help="clip actor gradients at this l2 norm")
+parser.add_argument('--critic-gradient-clip', type=float, default=None, help="clip critic gradients at this l2 norm")
 parser.add_argument('--actor-activation-init-magnitude', type=float, default=0.001,
                     help="weight magnitude for actor final activation. explicitly near zero to force near zero predictions initially")
 parser.add_argument('--replay-memory-size', type=int, default=500000, help="max size of replay memory")
@@ -152,7 +152,8 @@ class ActorNetwork(Network):
                                      self.trainable_model_vars(),
                                      tf.neg(critic.q_gradients_wrt_actions()))
       for i, gradient in enumerate(actor_gradients):
-        gradient = tf.clip_by_norm(gradient, gradient_clip_norm)
+        if gradient_clip_norm is not None:
+          gradient = tf.clip_by_norm(gradient, gradient_clip_norm)
 #        gradient = tf.Print(gradient, [util.l2_norm(gradient)], 'actor gradient l2_norm ')
         actor_gradients[i] = gradient
       optimiser = tf.train.AdamOptimizer(learning_rate)
@@ -234,7 +235,8 @@ class CriticNetwork(Network):
       for i, (gradient, variable) in enumerate(gradients):
         if gradient is None:  # these are the stop gradient cases; ignore them
           continue
-        gradient = tf.clip_by_norm(gradient, gradient_clip_norm)
+        if gradient_clip_norm is not None:
+          gradient = tf.clip_by_norm(gradient, gradient_clip_norm)
 #        gradient = tf.Print(gradient, [util.l2_norm(gradient)], 'critic gradient l2_norm ')
         gradients[i] = (gradient, variable)
       self.train_op = optimizer.apply_gradients(gradients)
@@ -326,11 +328,13 @@ class DeepDeterministicPolicyGradientAgent(object):
       state_1 = self.env.reset()
       done = False
       while not done:
+        # about 1% of the time we record verbose info about loss etc.
+        debug = np.random.random() < 0.01
         # choose action
         action = self.actor.action_given([state_1], add_noise=True)
         # for verbose debugging check the expected q values in both critic and target
         # critic networks. we expect this to rise.
-        if np.random.random() < 0.01:  # HACK
+        if debug:
           expected_q = float(self.critic.debug_q_value_for([state_1])[0][0])
           expected_target_q = float(self.target_critic.debug_q_value_for([state_1])[0][0])
           print "EXPECTED_Q_VALUES", expected_q, expected_target_q
@@ -345,7 +349,7 @@ class DeepDeterministicPolicyGradientAgent(object):
           self.critic.train(state_1_b, action_b, reward_b, terminal_mask_b, state_2_b)
           self.target_actor.update_weights()
           self.target_critic.update_weights()
-          if np.random.random() < 0.01:  # HACK
+          if debug:
             print "Q LOSS", self.critic.check_loss(state_1_b, action_b, reward_b, terminal_mask_b, state_2_b)
         # roll state for next step.
         state_1 = state_2
