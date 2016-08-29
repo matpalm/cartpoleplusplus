@@ -130,13 +130,13 @@ result by numbers
 
 ```
 # episode len deciles
-[  13.    23.8   28.    33.    36.6   43.    49.    58.    73.    90.2  200. ]
+[  28.    45.8   55.8   62.    68.2   78.    94.4  116.6  155.2  200.   200. ]
 # reward deciles
-[  26.49173813   53.29547295   69.89423669   87.80496202  118.0259743
-  123.87795639  154.4454325   188.9978803   257.4185117   336.31455274
-  918.93545607]
+[  69.38985073  141.13007933  169.3078872   201.67747291  236.90857766
+  280.20549274  341.64294321  430.14951458  642.42594679  877.00156479
+  935.87118159]
 ```
 
 result visually (click through for video)
 
-[![link](https://img.youtube.com/vi/IJHCKKF9I8M/0.jpg)](https://www.youtube.com/watch?v=IJHCKKF9I8M)
+[![link](https://img.youtube.com/vi/WFQ4r4_xZI0/0.jpg)](https://www.youtube.com/watch?v=WFQ4r4_xZI0)
