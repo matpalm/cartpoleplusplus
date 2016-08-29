@@ -17,9 +17,12 @@ np.set_printoptions(precision=5, threshold=10000, suppress=True, linewidth=10000
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--num-eval', type=int, default=0,
                     help="if >0 just run this many episodes with no training")
-parser.add_argument('--max-num-actions', type=int, default=1000,
-                    help="when training run complete episodes until the total number of"
-                         " actions taken exceeds this number")
+parser.add_argument('--max-num-actions', type=int, default=0,
+                    help="train for (at least) this number of actions (always finish current episode)"
+                         " ignore if <=0")
+parser.add_argument('--max-run-time', type=int, default=0,
+                    help="train for (at least) this number of seconds (always finish current episode)"
+                         " ignore if <=0")
 parser.add_argument('--run-id', type=str, default=None,
                     help="if set use --ckpt-dir=ckpts/<run-id> and write stats to <run-id>.stats")
 parser.add_argument('--ckpt-dir', type=str, default=None, help="if set save ckpts to this dir")
@@ -312,11 +315,14 @@ class DeepDeterministicPolicyGradientAgent(object):
     self.target_critic.set_as_target_network_for(self.critic, target_update_rate)
 
 
-  def run_training(self, max_num_actions, batch_size, saver_util, run_id):
+  def run_training(self, max_num_actions, max_run_time, batch_size, saver_util, run_id):
     # setup a stream to write stats to
     stats_stream = sys.stdout
     if run_id is not None:
       stats_stream = open("%s.stats" % run_id, "a")
+
+    # log start time, in case we are limiting by time...
+    start_time = time.time()
 
     # run for some max number of actions
     num_actions_taken = 0
@@ -375,7 +381,9 @@ class DeepDeterministicPolicyGradientAgent(object):
 
       # exit when finished
       num_actions_taken += len(rewards)
-      if num_actions_taken > max_num_actions:
+      if max_num_actions > 0 and num_actions_taken > max_num_actions:
+        break
+      if max_run_time > 0 and time.time() > start_time + max_run_time:
         break
       episode_num += 1
 
@@ -433,7 +441,8 @@ def main():
     if opts.num_eval > 0:
       agent.run_eval(opts.num_eval, opts.eval_action_noise)
     else:
-      agent.run_training(opts.max_num_actions, opts.batch_size, saver_util, opts.run_id)
+      agent.run_training(opts.max_num_actions, opts.max_run_time,
+                         opts.batch_size, saver_util, opts.run_id)
       if saver_util is not None:
         saver_util.force_save()
 
