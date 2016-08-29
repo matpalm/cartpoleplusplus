@@ -36,6 +36,7 @@ parser.add_argument('--critic-gradient-clip', type=float, default=None, help="cl
 parser.add_argument('--actor-activation-init-magnitude', type=float, default=0.001,
                     help="weight magnitude for actor final activation. explicitly near zero to force near zero predictions initially")
 parser.add_argument('--replay-memory-size', type=int, default=500000, help="max size of replay memory")
+parser.add_argument('--eval-action-noise', action='store_true', help="whether to use noise during eval")
 parser.add_argument('--action-noise-theta', type=float, default=0.01,
                     help="OrnsteinUhlenbeckNoise theta (rate of change) param for action exploration")
 parser.add_argument('--action-noise-sigma', type=float, default=0.2,
@@ -382,7 +383,7 @@ class DeepDeterministicPolicyGradientAgent(object):
     if stats_stream is not sys.stdout:
       stats_stream.close()
 
-  def run_eval(self, num_episodes):
+  def run_eval(self, num_episodes, add_noise=False):
     """ run num_episodes of eval and output episode length and rewards """
     for i in xrange(num_episodes):
       state = self.env.reset()
@@ -390,7 +391,7 @@ class DeepDeterministicPolicyGradientAgent(object):
       steps = 0
       done = False
       while not done:
-        action = self.actor.action_given([state], add_noise=False)
+        action = self.actor.action_given([state], add_noise)
         state, reward, done, _ = self.env.step(action)
 #        print "EVALSTEP r%s %s %s %s" % (i, steps, np.linalg.norm(action), reward)
         total_reward += reward
@@ -430,7 +431,7 @@ def main():
 
     # run either eval or training
     if opts.num_eval > 0:
-      agent.run_eval(opts.num_eval)
+      agent.run_eval(opts.num_eval, opts.eval_action_noise)
     else:
       agent.run_training(opts.max_num_actions, opts.batch_size, saver_util, opts.run_id)
       if saver_util is not None:
