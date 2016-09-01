@@ -28,6 +28,8 @@ parser.add_argument('--run-id', type=str, default=None,
 parser.add_argument('--ckpt-dir', type=str, default=None, help="if set save ckpts to this dir")
 parser.add_argument('--ckpt-freq', type=int, default=300, help="freq (sec) to save ckpts")
 parser.add_argument('--batch-size', type=int, default=128, help="training batch size")
+parser.add_argument('--batches-per-step', type=int, default=5,
+                    help="number of batches to train per step")
 parser.add_argument('--target-update-rate', type=float, default=0.001,
                     help="affine combo for updating target networks each time we run a training batch")
 parser.add_argument('--actor-hidden-layers', type=str, default="100,100,50", help="actor hidden layer sizes")
@@ -221,16 +223,18 @@ class CriticNetwork(Network):
     #  = reward + discounted q value from target actor & critic in the non terminal case
     #  = reward  # in the terminal case
     self.reward = tf.placeholder(shape=[None, 1], dtype=tf.float32, name="critic_reward")
-    self.terminal_mask = tf.placeholder(shape=[None, 1], dtype=tf.float32, name="critic_terminal_mask")
+    self.terminal_mask = tf.placeholder(shape=[None, 1], dtype=tf.float32,
+                                        name="critic_terminal_mask")
     self.input_state_2 = target_critic.input_state
     bellman_rhs = self.reward + (self.terminal_mask * self.discount * target_critic.q_value)
 
     # note: since we are NOT training target networks we stop gradients flowing to them
     bellman_rhs = tf.stop_gradient(bellman_rhs)
 
-    # the value we are trying to mimimise is the difference between these two; the temporal difference
-    # we use a squared loss for optimisation and, as for actor, we wrap optimiser in a namespace
-    # so it's not picked up by target network variable handling.
+    # the value we are trying to mimimise is the difference between these two; the
+    # temporal difference we use a squared loss for optimisation and, as for actor, we
+    # wrap optimiser in a namespace so it's not picked up by target network variable
+    # handling.
     temporal_difference = bellman_lhs - bellman_rhs
     self.temporal_difference_loss = tf.reduce_mean(tf.pow(temporal_difference, 2))
     with tf.variable_scope("optimiser"):
@@ -315,7 +319,8 @@ class DeepDeterministicPolicyGradientAgent(object):
     self.target_critic.set_as_target_network_for(self.critic, target_update_rate)
 
 
-  def run_training(self, max_num_actions, max_run_time, batch_size, saver_util, run_id):
+  def run_training(self, max_num_actions, max_run_time, batch_size, batches_per_step,
+                   saver_util, run_id):
     # setup a stream to write stats to
     stats_stream = sys.stdout
     if run_id is not None:
@@ -350,14 +355,15 @@ class DeepDeterministicPolicyGradientAgent(object):
         # add to replay memory
         self.replay_memory.add(state_1, action, reward, done, state_2)
         # do a training step (after waiting for buffer to fill a bit...)
-        if self.replay_memory.size() > batch_size * 10:
-          state_1_b, action_b, reward_b, terminal_mask_b, state_2_b = self.replay_memory.random_batch(batch_size)
-          self.actor.train(state_1_b)
-          self.critic.train(state_1_b, action_b, reward_b, terminal_mask_b, state_2_b)
-          self.target_actor.update_weights()
-          self.target_critic.update_weights()
-          if debug:
-            print "Q LOSS", self.critic.check_loss(state_1_b, action_b, reward_b, terminal_mask_b, state_2_b)
+        if self.replay_memory.size() > batch_size * batches_per_step * 10:
+          for _ in xrange(batches_per_step):
+            state_1_b, action_b, reward_b, terminal_mask_b, state_2_b = self.replay_memory.random_batch(batch_size)
+            self.actor.train(state_1_b)
+            self.critic.train(state_1_b, action_b, reward_b, terminal_mask_b, state_2_b)
+            self.target_actor.update_weights()
+            self.target_critic.update_weights()
+            if debug:
+              print "Q LOSS", self.critic.check_loss(state_1_b, action_b, reward_b, terminal_mask_b, state_2_b)
         # roll state for next step.
         state_1 = state_2
         rewards.append(reward)
@@ -442,7 +448,8 @@ def main():
       agent.run_eval(opts.num_eval, opts.eval_action_noise)
     else:
       agent.run_training(opts.max_num_actions, opts.max_run_time,
-                         opts.batch_size, saver_util, opts.run_id)
+                         opts.batch_size, opts.batches_per_step,
+                         saver_util, opts.run_id)
       if saver_util is not None:
         saver_util.force_save()
 
