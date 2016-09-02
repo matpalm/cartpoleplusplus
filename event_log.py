@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import event_pb2
+import gzip
 import struct
 
 class EventLog(object):
@@ -34,10 +35,16 @@ class EventLog(object):
       event.state.render.height = render[1]
       event.state.render.rgba = render[2]  # png encoded width x height image
 
+# retreive using
+# plt.imread(StringIO.StringIO(event.state.render.rgba))
+
 class EventLogReader(object):
 
   def __init__(self, path):
-    self.log_file = open(path, "rb")
+    if path.endswith(".gz"):
+      self.log_file = gzip.open(path, "rb")
+    else:
+      self.log_file = open(path, "rb")
 
   def entries(self):
     episode = event_pb2.Episode()
@@ -54,10 +61,11 @@ def make_dir(d):
     os.makedirs(d)
 
 if __name__ == "__main__":
-  import argparse, os
+  import argparse, os, sys
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument('--log-file', type=str, default=None)
   parser.add_argument('--echo', action='store_true', help="write event to stdout")
+  parser.add_argument('--max-process', type=int, help="if set only process this many")
   parser.add_argument('--img-output-dir', type=str, default=None,
                       help="if set output all renders to this DIR/e_NUM/s_NUM.png")
   # TODO args for episode range
@@ -76,6 +84,9 @@ if __name__ == "__main__":
       for s_id, event in enumerate(episode.event):
         with open("%s/e_%05d/s_%05d.png" % (opts.img_output_dir, e_id, s_id), "w") as f:
           f.write(event.state.render.rgba)
+    if opts.max_process is not None and e_id+1 >= opts.max_process:
+      break
+  print >>sys.stderr, "read", e_id+1, "episodes"
 
 
 
