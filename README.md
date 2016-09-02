@@ -29,7 +29,7 @@ pip install <whatever_tensorflow_wheel_file>
 export PYTHONPATH=$PYTHONPATH:$HOME/dev/keras-rl
 
 # for replay logging will need to compile protobuffer
-protoc event.proto --python_path=.
+protoc event.proto --python_out=.
 ```
 
 ## discrete version
@@ -140,3 +140,64 @@ result by numbers
 result visually (click through for video)
 
 [![link](https://img.youtube.com/vi/8X05GA5ZKvQ/0.jpg)](https://www.youtube.com/watch?v=8X05GA5ZKvQ)
+
+## general utils
+
+run a random agent, logging events to disk (outputs total rewards per episode)
+
+```
+$ ./random_action_agent.py --event-log=test.log --num-eval=10 --action-type=continuous
+12
+14
+...
+```
+
+review event.log (either from ddpg training or from random agent)
+
+```
+$ ./event_log.py --log-file=test.log --echo
+event {
+  state {
+    cart_pose: 0.116232253611
+    cart_pose: 0.0877446383238
+    cart_pose: 0.0748709067702
+    cart_pose: 1.14359036161e-05
+    cart_pose: 5.10180834681e-05
+    cart_pose: 0.0653914809227
+    cart_pose: 0.997859716415
+    pole_pose: 0.000139251351357
+    pole_pose: -0.0611916743219
+    pole_pose: 0.344804286957
+    pole_pose: -0.123383037746
+    pole_pose: 0.00611496530473
+    pole_pose: 0.0471726879478
+    pole_pose: 0.991218447685
+    render {
+      height: 120
+      width: 160
+      rgba: "\211PNG\r\n\032\n\000\..."
+    }
+  }
+  is_terminal: false
+  action: -0.157108291984
+  action: 0.330988258123
+  reward: 4.0238070488
+}
+...
+```
+
+generate images from event.log
+
+```
+$ ./event_log.py --log-file=test.log --img-output-dir=eg_renders
+$ find eg_renders -type f | sort
+eg_renders/e_00000/s_00000.png
+eg_renders/e_00000/s_00001.png
+...
+eg_renders/e_00009/s_00018.png
+eg_renders/e_00009/s_00019.png
+```
+
+
+
+

@@ -3,8 +3,10 @@
 from collections import *
 import gym
 from gym import spaces
-import pybullet as p
+import matplotlib.pyplot as plt
 import numpy as np
+import pybullet as p
+import StringIO
 import sys
 import time
 
@@ -13,6 +15,25 @@ np.set_printoptions(precision=3, suppress=True, linewidth=10000)
 def state_fields_of_pose_of(body_id):
   (x,y,z), (a,b,c,d) = p.getBasePositionAndOrientation(body_id)
   return np.array([x,y,z,a,b,c,d])
+
+def render_as_png(width, height):
+  # call to pybullet render
+  cameraPos = (0.5, 0.5, 0.5)
+  targetPos = (0, 0, 0.2)
+  cameraUp = (0, 0, 1)
+  nearVal, farVal = 1, 20
+  fov = 60
+  _w, _h, rgba, _depth, _objects = p.renderImage(width, height,
+                                                 cameraPos, targetPos, cameraUp,
+                                                 nearVal, farVal, fov)
+  # convert from 1d array of 1 -> 255 to np array 0.0 -> 1.0
+  rgba_img = np.reshape(np.asarray(rgba, dtype=np.float32),
+                        (height, width, 4))
+  rgba_img /= 255
+  # encode as png and write to bytes
+  sio = StringIO.StringIO()
+  plt.imsave(sio, rgba_img)
+  return sio.getvalue()
 
 class BulletCartpole(gym.Env):
 
@@ -172,7 +193,8 @@ class BulletCartpole(gym.Env):
 
     # log this event
     if self.event_log:
-      self.event_log.add(self.current_state, self.done, action, reward)
+      self.event_log.add(self.current_state, self.done, action, reward,
+                         render=(160, 120, render_as_png(160, 120)))
 
     # update state and return observation
     self.update_current_state()

@@ -6,8 +6,10 @@ import time
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--gui', action='store_true')
-parser.add_argument('--initial-force', type=float, default=20.0,
+parser.add_argument('--initial-force', type=float, default=55.0,
                     help="magnitude of initial push, in random direction")
+parser.add_argument('--action-force', type=float, default=50.0,
+                    help="magnitude of action force")
 parser.add_argument('--event-log', type=str, default=None,
                     help="path to record event log.")
 parser.add_argument('--actions', type=str, default='0,1,2,3,4',
@@ -29,6 +31,7 @@ else:
   raise Exception("Unknown action type [%s]" % opts.action_type)
 
 env = bullet_cartpole.BulletCartpole(gui=opts.gui, initial_force=opts.initial_force,
+                                     action_force=opts.action_force,
                                      discrete_actions=discrete_actions,
                                      event_log_file=opts.event_log)
 
@@ -49,3 +52,4 @@ for _ in xrange(opts.num_eval):
       break
   print steps
 
+env.reset()  # to force final event log (clumsy)
