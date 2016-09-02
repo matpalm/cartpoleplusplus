@@ -33,7 +33,7 @@ for line in sys.stdin:
 
   if line.startswith("STATS"):
     cols = line.split("\t")
-    assert len(cols) == 2
+    assert len(cols) == 2, line
     try:
       d = json.loads(cols[1])
       if should_emit("EPISODE_LEN"):
@@ -71,18 +71,18 @@ for line in sys.stdin:
     f_q_values.write("%s main %f\n" % (time, float(cols[1])))
     f_q_values.write("%s target %f\n" % (time, float(cols[2])))
 
-  elif line.startswith("EVAL") \
-       and not line.startswith("EVALSTEP") \
-       and should_emit("EVAL"):
+  elif line.startswith("EVAL") and \
+       not line.startswith("EVALSTEP") and \
+       should_emit("EVAL"):
     cols = line.split(" ")
-    if len(cols) == 2:  # OLD FORMAT
-      tag, steps = cols
-      assert tag == "EVAL"
-      total_reward = steps
-    elif len(cols) == 3:
+    if len(cols) == 3:  # format for <= run43
       tag, steps, total_reward = cols
       assert tag == "EVAL"
+    elif len(cols) == 4:
+      tag, n, steps, total_reward = cols
+      assert tag == "EVAL"
     else:
+      print "??? [%s]" % line.strip()
       assert False
     assert steps >= 0
     assert total_reward >= 0

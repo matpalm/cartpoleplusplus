@@ -34,7 +34,6 @@ df = read.delim("/tmp/eval", h=T, sep=" ")
 png("/tmp/plots/07a_eval_episode_len.png", width=640, height=320)
 ggplot(df, aes(time, steps)) + geom_point(alpha=0.2) + geom_smooth() + labs(title="eval episode len")
 dev.off()
-
 png("/tmp/plots/07b_eval_total_reward.png", width=640, height=320)
 ggplot(df, aes(time, total_reward)) + geom_point(alpha=0.2) + geom_smooth() + labs(title="eval total reward")
 dev.off()
