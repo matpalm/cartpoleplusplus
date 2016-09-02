@@ -1,7 +1,20 @@
 #!/usr/bin/env python
 import event_pb2
 import gzip
+import matplotlib.pyplot as plt
+import StringIO
 import struct
+
+def rgb_to_png(rgb):
+  sio = StringIO.StringIO()
+  plt.imsave(sio, rgb)
+  return sio.getvalue()
+
+def png_to_rgb(png_bytes):
+  # note PNG is always RGBA so we need to slice off A
+  rgba = plt.imread(StringIO.StringIO(png_bytes))
+  return rgba[:,:,:3]
+
 
 class EventLog(object):
 
@@ -31,12 +44,9 @@ class EventLog(object):
     event.action.extend(map(float, action[0]))
     event.reward = reward
     if render is not None:
-      event.state.render.width = render[0]
-      event.state.render.height = render[1]
-      event.state.render.rgba = render[2]  # png encoded width x height image
-
-# retreive using
-# plt.imread(StringIO.StringIO(event.state.render.rgba))
+      event.state.render.width = render.shape[1]
+      event.state.render.height = render.shape[0]
+      event.state.render.png_bytes = rgb_to_png(render)
 
 class EventLogReader(object):
 
@@ -83,7 +93,7 @@ if __name__ == "__main__":
       make_dir("%s/e_%05d" % (opts.img_output_dir, e_id))
       for s_id, event in enumerate(episode.event):
         with open("%s/e_%05d/s_%05d.png" % (opts.img_output_dir, e_id, s_id), "w") as f:
-          f.write(event.state.render.rgba)
+          f.write(event.state.render.png_bytes)
     if opts.max_process is not None and e_id+1 >= opts.max_process:
       break
   print >>sys.stderr, "read", e_id+1, "episodes"

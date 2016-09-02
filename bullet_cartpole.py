@@ -3,10 +3,8 @@
 from collections import *
 import gym
 from gym import spaces
-import matplotlib.pyplot as plt
 import numpy as np
 import pybullet as p
-import StringIO
 import sys
 import time
 
@@ -16,7 +14,7 @@ def state_fields_of_pose_of(body_id):
   (x,y,z), (a,b,c,d) = p.getBasePositionAndOrientation(body_id)
   return np.array([x,y,z,a,b,c,d])
 
-def render_as_png(width, height):
+def render_rgb(width, height):
   # call to pybullet render
   cameraPos = (0.5, 0.5, 0.5)
   targetPos = (0, 0, 0.2)
@@ -29,11 +27,8 @@ def render_as_png(width, height):
   # convert from 1d array of 1 -> 255 to np array 0.0 -> 1.0
   rgba_img = np.reshape(np.asarray(rgba, dtype=np.float32),
                         (height, width, 4))
-  rgba_img /= 255
-  # encode as png and write to bytes
-  sio = StringIO.StringIO()
-  plt.imsave(sio, rgba_img)
-  return sio.getvalue()
+  rgb_img = rgba_img[:,:,:3]  # slice off alpha, always 1.0
+  return rgb_img / 255
 
 class BulletCartpole(gym.Env):
 
@@ -45,11 +40,11 @@ class BulletCartpole(gym.Env):
 
   def __init__(self, gui=True, delay=0.0, max_episode_len=200, action_force=50.0,
                initial_force=55.0, random_theta=True, discrete_actions=True,
-               event_log_file=None):
+               event_log_file=None, state_as_raw_pixels=False,
+               render_width=160, render_height=120):
 
     self.gui = gui
     self.delay = delay if gui else 0.0
-
     self.max_episode_len = max_episode_len
 
     # threshold for pole position.
@@ -98,20 +93,27 @@ class BulletCartpole(gym.Env):
     else:
       self.event_log = None
 
-    # obs space for problem is
-    # for pole: pos x/y, orientation a,b,c,d
-    # and the same for the cart
-    # and then the deltas, for the pole, and possibly the cart
-    # we give *2 range for cutoff... and ignore bounds on deltas
-    float_max = np.finfo(np.float32).max
-    # observation state space is ...
-    #  7 tuple for pose
-    #  * 2 for cart & pole
-    #  * 2 for current / last time step
-    # ( don't worry about correct bounds, we won't be sampling from
-    # these & just causes noises in output )
-    bound = np.array([float_max] * 7 * 2 * 2)
-    self.observation_space = gym.spaces.Box(-bound, bound)
+    # whether we are using raw pixels for state or just pole + cart pose
+    self.state_as_raw_pixels = state_as_raw_pixels
+
+    # if either event_log_file or state_as_raw_pixels is set we will be rendering
+    self.render_width = render_width
+    self.render_height = render_height
+
+    # decide observation space
+    if self.state_as_raw_pixels:
+      # in high dimensional case observation space is rendered rgb image
+      self.observation_space = gym.spaces.Box(0, 1, (render_height, render_width, 3))
+    else:
+      # in low dimensional case observation state space is ...
+      #  7 tuple for pose (pos x,y,z & quaternion orientation a,b,c,d)
+      #  * 2 for cart & pole
+      #  * 2 for current / last time step
+      # ( don't worry about correct bounds, we won't be sampling from
+      # these & just out of bounds obs just causes stdout "warning" noise )
+      float_max = np.finfo(np.float32).max
+      bound = np.array([float_max] * 7 * 2 * 2)
+      self.observation_space = gym.spaces.Box(-bound, bound)
 
     p.connect(p.GUI if self.gui else p.DIRECT)
     p.setGravity(0, 0, -9.81)
@@ -124,7 +126,6 @@ class BulletCartpole(gym.Env):
     pass
 
   def _seed(self, seed=None):
-    # TODO
     pass
 
   def _render(self, mode, close):
@@ -194,7 +195,7 @@ class BulletCartpole(gym.Env):
     # log this event
     if self.event_log:
       self.event_log.add(self.current_state, self.done, action, reward,
-                         render=(160, 120, render_as_png(160, 120)))
+                         render_rgb(self.render_width, self.render_height))
 
     # update state and return observation
     self.update_current_state()
