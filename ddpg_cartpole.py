@@ -32,6 +32,7 @@ parser.add_argument('--batches-per-step', type=int, default=5,
                     help="number of batches to train per step")
 parser.add_argument('--target-update-rate', type=float, default=0.001,
                     help="affine combo for updating target networks each time we run a training batch")
+parser.add_argument('--use-raw-pixels', action='store_true', help="just use raw pixels")
 parser.add_argument('--actor-hidden-layers', type=str, default="100,100,50", help="actor hidden layer sizes")
 parser.add_argument('--critic-hidden-layers', type=str, default="100,100,50", help="actor hidden layer sizes")
 parser.add_argument('--actor-learning-rate', type=float, default=0.001, help="learning rate for actor")
@@ -40,14 +41,14 @@ parser.add_argument('--actor-gradient-clip', type=float, default=None, help="cli
 parser.add_argument('--critic-gradient-clip', type=float, default=None, help="clip critic gradients at this l2 norm")
 parser.add_argument('--actor-activation-init-magnitude', type=float, default=0.001,
                     help="weight magnitude for actor final activation. explicitly near zero to force near zero predictions initially")
-parser.add_argument('--replay-memory-size', type=int, default=500000, help="max size of replay memory")
+parser.add_argument('--replay-memory-size', type=int, default=50000, help="max size of replay memory")
 parser.add_argument('--eval-action-noise', action='store_true', help="whether to use noise during eval")
 parser.add_argument('--action-noise-theta', type=float, default=0.01,
                     help="OrnsteinUhlenbeckNoise theta (rate of change) param for action exploration")
 parser.add_argument('--action-noise-sigma', type=float, default=0.2,
                     help="OrnsteinUhlenbeckNoise sigma (magnitude) param for action exploration")
 # bullet cartpole specific ...
-parser.add_argument('--gui', action='store_true', help="whether to call env.render()")
+parser.add_argument('--gui', action='store_true', help="use gui")
 parser.add_argument('--delay', type=float, default=0.0, help="gui per step delay")
 parser.add_argument('--max-episode-len', type=int, default=200, help="maximum episode len for cartpole")
 parser.add_argument('--initial-force', type=float, default=55.0,
@@ -59,6 +60,8 @@ parser.add_argument('--event-log', type=str, default=None,
 
 opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
+sys.stderr.write("first training at epoch %s\n" % (opts.batch_size * \
+                                                   opts.batches_per_step * 10))
 
 class Network(object):
   """Common class for actor/critic handling ops for making / updating target networks."""
@@ -93,7 +96,7 @@ class Network(object):
                                                            target_update_rate)
 
   def update_weights(self):
-    """called during training to update target network. requires prior call to set_source_network"""
+    """called during training to update target network."""
     if self.update_weights_op is None:
       raise Exception("not a target network? or set_source_network not yet called")
     return tf.get_default_session().run(self.update_weights_op)
@@ -105,6 +108,10 @@ class Network(object):
         v.append(var)
     return v
 
+  def l2(self):
+    # TODO: config
+    return tf.contrib.layers.l2_regularizer(0.01)
+
   def hidden_layers_starting_at(self, layer, config):
     layer_sizes = map(int, config.split(","))
     assert len(layer_sizes) > 0
@@ -112,37 +119,54 @@ class Network(object):
       layer = slim.fully_connected(scope="h%d" % i,
                                   inputs=layer,
                                   num_outputs=size,
-                                  weights_regularizer=tf.contrib.layers.l2_regularizer(0.01),
+                                  weights_regularizer=self.l2(),
                                   activation_fn=tf.nn.relu)
     return layer
+
+  def simple_conv_net_on(self, input_layer):
+    # TODO: config like hidden_layers_starting_at; whitenen input? batch norm? etc...
+    model = slim.conv2d(input_layer, num_outputs=30, kernel_size=[5, 5], scope='conv1')
+    model = slim.max_pool2d(model, kernel_size=[2, 2], scope='pool1')
+    model = slim.conv2d(model, num_outputs=10, kernel_size=[5, 5], scope='conv2')
+    model = slim.max_pool2d(model, kernel_size=[2, 2], scope='pool2')
+    return slim.flatten(model, scope='flat')
 
 class ActorNetwork(Network):
   """ the actor represents the learnt policy mapping states to actions"""
 
-  def __init__(self, namespace, state_dim, action_dim,
+  def __init__(self, namespace, state_shape, action_dim,
                hidden_layer_config,
                explore_theta=0.0, explore_sigma=0.0,
-               actor_activation_init_magnitude=1e-3):
+               actor_activation_init_magnitude=1e-3,
+               use_raw_pixels=False):
     super(ActorNetwork, self).__init__(namespace)
-    self.state_dim = state_dim
-    self.action_dim = action_dim
 
-    self.input_state = tf.placeholder(shape=[None, state_dim],
+    self.input_state = tf.placeholder(shape=[None] + list(state_shape),  # add leading batch axis
                                       dtype=tf.float32, name="actor_input_state")
 
     self.exploration_noise = util.OrnsteinUhlenbeckNoise(action_dim, explore_theta, explore_sigma)
 
     with tf.variable_scope(namespace):
-      # stack of hidden layers
-      final_hidden = self.hidden_layers_starting_at(self.input_state, config=hidden_layer_config)
-      # action dim output. note: actors out is (-1, 1) and scaled in environment as required.
+      if use_raw_pixels:
+        # simple conv net
+        conv_net = self.simple_conv_net_on(self.input_state)
+        final_hidden = slim.fully_connected(conv_net, 50, scope='hidden1')
+      else:
+        # stack of hidden layers
+        final_hidden = self.hidden_layers_starting_at(self.input_state,
+                                                      hidden_layer_config)
+
+      # TODO: add dropout for both nets!
+
+      # action dim output. note: actors out is (-1, 1) and scaled in env as required.
       weights_initializer = tf.random_uniform_initializer(-actor_activation_init_magnitude,
                                                           actor_activation_init_magnitude)
+      # final
       self.output_action = slim.fully_connected(scope='output_action',
                                                 inputs=final_hidden,
                                                 num_outputs=action_dim,
                                                 weights_initializer=weights_initializer,
-                                                weights_regularizer=tf.contrib.layers.l2_regularizer(0.01),
+                                                weights_regularizer=self.l2(),
                                                 activation_fn=tf.nn.tanh)
 
   def init_ops_for_training(self, critic, learning_rate, gradient_clip_norm):
@@ -187,7 +211,8 @@ class ActorNetwork(Network):
 class CriticNetwork(Network):
   """ the critic represents a mapping from state & actors action to a quality score."""
 
-  def __init__(self, namespace, actor, hidden_layer_config, discount=0.99):
+  def __init__(self, namespace, actor, hidden_layer_config,
+               discount=0.99, use_raw_pixels=False):
     super(CriticNetwork, self).__init__(namespace)
     self.discount = discount  # bellman update discount  TODO: config!
 
@@ -202,15 +227,26 @@ class CriticNetwork(Network):
     self.input_action = tf.stop_gradient(actor.output_action)
 
     with tf.variable_scope(namespace):
-      # TODO: don't add action until later in stack?
-      concat_inputs = tf.concat(1, [self.input_state, self.input_action])
-      # stack of hidden layers
-      final_hidden = self.hidden_layers_starting_at(concat_inputs, config=hidden_layer_config)
+      if use_raw_pixels:
+        conv_net = self.simple_conv_net_on(self.input_state)
+        hidden1 = slim.fully_connected(scope="hidden1",
+                                       inputs=conv_net,
+                                       num_outputs=50,
+                                       weights_regularizer=self.l2())
+        concat_inputs = tf.concat(1, [hidden1, self.input_action])
+        final_hidden = slim.fully_connected(scope="hidden2",
+                                            inputs=concat_inputs,
+                                            num_outputs=50)
+      else:
+        concat_inputs = tf.concat(1, [self.input_state, self.input_action])
+        final_hidden = self.hidden_layers_starting_at(concat_inputs,
+                                                      hidden_layer_config)
+
       # output from critic is a single q-value
       self.q_value = slim.fully_connected(scope='q_value',
                                           inputs=final_hidden,
                                           num_outputs=1,
-                                          weights_regularizer=tf.contrib.layers.l2_regularizer(0.01),
+                                          weights_regularizer=self.l2(),
                                           activation_fn=None)
 
   def init_ops_for_training(self, target_critic, learning_rate, gradient_clip_norm):
@@ -279,28 +315,31 @@ class CriticNetwork(Network):
 class DeepDeterministicPolicyGradientAgent(object):
   def __init__(self, env, agent_opts):
     self.env = env
-    state_dim = self.env.observation_space.shape[0]
+    state_shape = self.env.observation_space.shape
     action_dim = self.env.action_space.shape[1]
 
     # for now, with single machine synchronous training, use a replay memory for training.
     # TODO: switch back to async training with multiple replicas (as in drivebot project)
     self.replay_memory = replay_memory.ReplayMemory(agent_opts.replay_memory_size, 
-                                                    state_dim, action_dim)
+                                                    state_shape, action_dim)
 
     # initialise base models for actor / critic and their corresponding target networks
     # target_actor is never used for online sampling so doesn't need explore noise.
-    self.actor = ActorNetwork("actor", state_dim, action_dim,
+    self.actor = ActorNetwork("actor", state_shape, action_dim,
                               agent_opts.actor_hidden_layers,
                               agent_opts.action_noise_theta,
                               agent_opts.action_noise_sigma,
-                              agent_opts.actor_activation_init_magnitude)
-          
+                              agent_opts.actor_activation_init_magnitude,
+                              agent_opts.use_raw_pixels)
     self.critic = CriticNetwork("critic", self.actor, 
-                                agent_opts.critic_hidden_layers)
-    self.target_actor = ActorNetwork("target_actor", state_dim, action_dim,
-                                     agent_opts.actor_hidden_layers)
+                                agent_opts.critic_hidden_layers,
+                                use_raw_pixels=agent_opts.use_raw_pixels)
+    self.target_actor = ActorNetwork("target_actor", state_shape, action_dim,
+                                     agent_opts.actor_hidden_layers,
+                                     use_raw_pixels=agent_opts.use_raw_pixels)
     self.target_critic = CriticNetwork("target_critic", self.target_actor,
-                                       agent_opts.critic_hidden_layers)
+                                       agent_opts.critic_hidden_layers,
+                                       use_raw_pixels=agent_opts.use_raw_pixels)
 
     # setup training ops;
     # training actor requires the critic (for getting gradients)
@@ -357,7 +396,8 @@ class DeepDeterministicPolicyGradientAgent(object):
         # do a training step (after waiting for buffer to fill a bit...)
         if self.replay_memory.size() > batch_size * batches_per_step * 10:
           for _ in xrange(batches_per_step):
-            state_1_b, action_b, reward_b, terminal_mask_b, state_2_b = self.replay_memory.random_batch(batch_size)
+            state_1_b, action_b, reward_b, terminal_mask_b, state_2_b = \
+                              self.replay_memory.random_batch(batch_size)
             self.actor.train(state_1_b)
             self.critic.train(state_1_b, action_b, reward_b, terminal_mask_b, state_2_b)
             self.target_actor.update_weights()
@@ -372,8 +412,8 @@ class DeepDeterministicPolicyGradientAgent(object):
       stats["total_reward"] = np.sum(rewards)
       stats["episode_len"] = len(rewards)
       stats["replay_memory_size"] = self.replay_memory.size()
-      stats_stream.write("STATS %s\t%s\n" % (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                             json.dumps(stats)))
+      dts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+      stats_stream.write("STATS %s\t%s\n" % (dts, json.dumps(stats)))
 
       # save if required
       if saver_util is not None:
@@ -415,14 +455,16 @@ class DeepDeterministicPolicyGradientAgent(object):
 
   def debug_dump_network_weights(self):
     for var in tf.all_variables():
-      print "----------------", var.name
-      print var.eval()
+      print "----------------", var.name, var.get_shape()
+#      print var.eval()
 
 def main():
   env = bullet_cartpole.BulletCartpole(gui=opts.gui, action_force=opts.action_force,
                                        max_episode_len=opts.max_episode_len,
                                        initial_force=opts.initial_force, delay=opts.delay,
-                                       discrete_actions=False, event_log_file=opts.event_log)
+                                       discrete_actions=False,
+                                       event_log_file=opts.event_log,
+                                       state_as_raw_pixels=opts.use_raw_pixels)
 
   with tf.Session() as sess:  #config=tf.ConfigProto(log_device_placement=True)) as sess:
     agent = DeepDeterministicPolicyGradientAgent(env=env, agent_opts=opts)

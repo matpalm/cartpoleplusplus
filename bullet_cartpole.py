@@ -102,8 +102,9 @@ class BulletCartpole(gym.Env):
 
     # decide observation space
     if self.state_as_raw_pixels:
-      # in high dimensional case observation space is rendered rgb image
-      self.observation_space = gym.spaces.Box(0, 1, (render_height, render_width, 3))
+      # in high dimensional case observation space is _two_ rendered rgb images
+      # concatenated; first is current frame, second is previous frame
+      self.observation_space = gym.spaces.Box(0, 1, (render_height*2, render_width, 3))
     else:
       # in low dimensional case observation state space is ...
       #  7 tuple for pose (pos x,y,z & quaternion orientation a,b,c,d)
@@ -194,16 +195,22 @@ class BulletCartpole(gym.Env):
 
     # log this event
     if self.event_log:
-      self.event_log.add(self.current_state, self.done, action, reward,
-                         render_rgb(self.render_width, self.render_height))
+      print "TODO!" # need to always call state_fields_of_pose_of pole & cart
+      # and pass instead of self.current_state furthermore move this to BELOW
+      # update current state in case we can use that cached value
+#      self.event_log.add(self.current_state, self.done, action, reward,
+#                         render_rgb(self.render_width, self.render_height))
 
     # update state and return observation
     self.update_current_state()
     return self.observation_state(), reward, self.done, info
 
   def pole_and_cart_state(self):
-    return np.concatenate([state_fields_of_pose_of(self.pole),
-                           state_fields_of_pose_of(self.cart)])
+    if self.state_as_raw_pixels:
+      return render_rgb(self.render_width, self.render_height)
+    else:
+      return np.concatenate([state_fields_of_pose_of(self.pole),
+                             state_fields_of_pose_of(self.cart)])
 
   def update_current_state(self):
     self.last_state = self.current_state
