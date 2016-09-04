@@ -24,7 +24,7 @@ class BulletCartpole(gym.Env):
 
   def __init__(self, gui=True, delay=0.0, max_episode_len=200, action_force=50.0,
                initial_force=55.0, random_theta=True, discrete_actions=True,
-               event_log_file=None):
+               event_log_file=None, repeats=2):
 
     self.gui = gui
     self.delay = delay if gui else 0.0
@@ -44,9 +44,6 @@ class BulletCartpole(gym.Env):
     # in the continuous case each x/y is in range (-F, F)
     self.action_force = action_force
 
-    # apply action for this many sim time steps.
-    self.sim_step_rate = 10
-
     # initial push force. this should be enough that taking no action will always
     # result in pole falling after initial_force_steps but not so much that you
     # can't recover. see also initial_force_steps.
@@ -65,6 +62,7 @@ class BulletCartpole(gym.Env):
     self.discrete_actions = discrete_actions
 
     # 5 discrete actions: no push, left, right, up, down
+    # 2 continuous action elements; fx & fy
     if self.discrete_actions:
       self.action_space = spaces.Discrete(5)
     else:
@@ -77,20 +75,18 @@ class BulletCartpole(gym.Env):
     else:
       self.event_log = None
 
+    # how many time to repeat each action per step().
+    self.repeats = repeats
+    
     # obs space for problem is
-    # for pole: pos x/y, orientation a,b,c,d
-    # and the same for the cart
-    # and then the deltas, for the pole, and possibly the cart
-    # we give *2 range for cutoff... and ignore bounds on deltas
+    # observation state space is (R, 14)
+    #  R = number of repeats
+    #  14 = 7 tuple for pose * 2 for cart & pole
     float_max = np.finfo(np.float32).max
-    # observation state space is ...
-    #  7 tuple for pose
-    #  * 2 for cart & pole
-    #  * 2 for current / last time step
-    # ( don't worry about correct bounds, we won't be sampling from
-    # these & just causes noises in output )
-    bound = np.array([float_max] * 7 * 2 * 2)
-    self.observation_space = gym.spaces.Box(-bound, bound)
+    self.observation_space = gym.spaces.Box(-float_max, float_max, (self.repeats, 14))
+
+    # no state until reset.
+    self.state = np.empty((self.repeats, 14), dtype=np.float32)
 
     p.connect(p.GUI if self.gui else p.DIRECT)
     p.setGravity(0, 0, -9.81)
@@ -103,7 +99,6 @@ class BulletCartpole(gym.Env):
     pass
 
   def _seed(self, seed=None):
-    # TODO
     pass
 
   def _render(self, mode, close):
@@ -111,8 +106,8 @@ class BulletCartpole(gym.Env):
 
   def _step(self, action):
     if self.done:
-      print "calling step after done????"
-      return self.observation_state(), 0, True, {}
+      print >>sys.stderr, "calling step after done????"
+      return self.state, 0, True, {}
 
     info = {}
 
@@ -134,12 +129,15 @@ class BulletCartpole(gym.Env):
     else:
       fx, fy = action[0] * self.action_force
 
-    # step simulation forward a bit.
-    for _ in xrange(self.sim_step_rate):
+    # step simulation forward. at the end of each repeat we capture the pole and
+    # cart poses.
+    for r in xrange(self.repeats):
       p.stepSimulation()
       p.applyExternalForce(self.cart, -1, (fx,fy,0), (0,0,0), p.WORLD_FRAME)
       if self.delay > 0:
         time.sleep(self.delay)
+      self.state[r] = self.pole_and_cart_state()
+
     self.steps += 1
 
     # calculate reward.
@@ -151,7 +149,6 @@ class BulletCartpole(gym.Env):
       max_abs_force = self.action_force * 2
       abs_force = abs(fx) + abs(fy)
       reward = 1.0 + 4.0 - (4.0 * abs_force / max_abs_force)
-      assert reward >= 0  # TODO REMOVE
 
     # Check for out of bounds by position or orientation on pole.
     # we (re)fetch pose explicitly rather than depending on fields in state.
@@ -172,22 +169,14 @@ class BulletCartpole(gym.Env):
 
     # log this event
     if self.event_log:
-      self.event_log.add(self.current_state, self.done, action, reward)
+      self.event_log.add(self.state, self.done, action, reward)
 
-    # update state and return observation
-    self.update_current_state()
-    return self.observation_state(), reward, self.done, info
+    # return observation
+    return self.state, reward, self.done, info
 
   def pole_and_cart_state(self):
     return np.concatenate([state_fields_of_pose_of(self.pole),
                            state_fields_of_pose_of(self.cart)])
-
-  def update_current_state(self):
-    self.last_state = self.current_state
-    self.current_state = self.pole_and_cart_state()
-
-  def observation_state(self):
-    return np.concatenate([self.current_state, self.last_state])
 
   def _reset(self):
     # reset state
@@ -212,9 +201,7 @@ class BulletCartpole(gym.Env):
       if self.delay > 0:
         time.sleep(self.delay)
 
-    # bootstrap last / current state
-    self.last_state = self.pole_and_cart_state()
-    self.current_state = self.last_state
-    return self.observation_state()
-
-
+    # bootstrap state
+    for i in xrange(self.repeats):
+      self.state[i] = self.pole_and_cart_state()
+    return self.state

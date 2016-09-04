@@ -7,7 +7,7 @@ message State {
 }
 
 message Event {
-  optional State state = 1;
+  repeated State state = 1;
   optional bool is_terminal = 2;
   repeated float action = 3;
   optional float reward = 4;

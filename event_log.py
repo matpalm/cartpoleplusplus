@@ -23,12 +23,16 @@ class EventLog(object):
 
   def add(self, state, done, action, reward):
     event = self.episode_entry.event.add()
-    assert len(state) == 14
-    event.state.pole_pose.extend(state[:7])
-    event.state.cart_pose.extend(state[7:])
+    for row in state:
+      s = event.state.add()
+      s.pole_pose.extend(map(float, row[:7]))
+      s.cart_pose.extend(map(float, row[7:]))
     event.is_terminal = done
-    assert action.shape[0] == 1  # never log batch operations
-    event.action.extend(map(float, action[0]))
+    if isinstance(action, int):
+      event.action.append(action)  # single action
+    else:
+      assert action.shape[0] == 1  # never log batch operations
+      event.action.extend(map(float, action[0]))
     event.reward = reward
 
 class EventLogReader(object):
