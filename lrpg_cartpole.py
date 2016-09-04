@@ -48,14 +48,13 @@ class LikelihoodRatioPolicyGradientAgent(object):
     self.env = env
     self.gui = gui
 
-    # base model mapping from observation to actions through single hidden layer.
-    observation_dim = self.env.observation_space.shape[0]
     num_actions = self.env.action_space.n
 
     # we have three place holders we'll use...
     # observations; used either during rollout to sample some actions, or
     # during training when combined with actions_taken and advantages.
-    self.observations = tf.placeholder(shape=[None, observation_dim],
+    shape_with_batch = [None] + list(self.env.observation_space.shape)
+    self.observations = tf.placeholder(shape=shape_with_batch,
                                        dtype=tf.float32)
     # the actions we took during rollout
     self.actions = tf.placeholder(tf.int32, name='actions')
@@ -64,7 +63,8 @@ class LikelihoodRatioPolicyGradientAgent(object):
 
     # our model is a very simple MLP
     with tf.variable_scope("model"):
-      hidden = slim.fully_connected(inputs=self.observations,
+      flat_obs = slim.flatten(self.observations)
+      hidden = slim.fully_connected(inputs=flat_obs,
                                     num_outputs=hidden_dim,
                                     activation_fn=tf.nn.tanh)
       logits = slim.fully_connected(inputs=hidden,

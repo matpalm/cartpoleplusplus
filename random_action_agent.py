@@ -6,7 +6,9 @@ import time
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--gui', action='store_true')
-parser.add_argument('--initial-force', type=float, default=20.0,
+parser.add_argument('--action-force', type=float, default=50.0,
+                    help="magnitude of action force applied per step")
+parser.add_argument('--initial-force', type=float, default=55.0,
                     help="magnitude of initial push, in random direction")
 parser.add_argument('--event-log', type=str, default=None,
                     help="path to record event log.")
