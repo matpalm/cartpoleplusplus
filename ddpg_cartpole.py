@@ -23,8 +23,6 @@ parser.add_argument('--max-num-actions', type=int, default=0,
 parser.add_argument('--max-run-time', type=int, default=0,
                     help="train for (at least) this number of seconds (always finish current episode)"
                          " ignore if <=0")
-parser.add_argument('--run-id', type=str, default=None,
-                    help="if set use --ckpt-dir=ckpts/<run-id> and write stats to <run-id>.stats")
 parser.add_argument('--ckpt-dir', type=str, default=None, help="if set save ckpts to this dir")
 parser.add_argument('--ckpt-freq', type=int, default=300, help="freq (sec) to save ckpts")
 parser.add_argument('--batch-size', type=int, default=128, help="training batch size")
@@ -312,11 +310,7 @@ class DeepDeterministicPolicyGradientAgent(object):
 
 
   def run_training(self, max_num_actions, max_run_time, batch_size, batches_per_step,
-                   saver_util, run_id):
-    # setup a stream to write stats to
-    stats_stream = sys.stdout
-    if run_id is not None:
-      stats_stream = open("%s.stats" % run_id, "a")
+                   saver_util):
 
     # log start time, in case we are limiting by time...
     start_time = time.time()
@@ -331,19 +325,25 @@ class DeepDeterministicPolicyGradientAgent(object):
       # run an episode
       state_1 = self.env.reset()
       done = False
+      # about 1% of the time we record verbose info for entire episode about loss etc
+      debug = np.random.random() < 0.01
       while not done:
-        # about 1% of the time we record verbose info about loss etc.
-        debug = np.random.random() < 0.01
         # choose action
         action = self.actor.action_given([state_1], add_noise=True)
-        # for verbose debugging check the expected q values in both critic and target
-        # critic networks. we expect this to rise.
+        # take action step in env
+        state_2, reward, done, _ = self.env.step(action)
+
         if debug:
+          print "-----"
+          print "state_1", state_1
+          print "action", action
+          print "reward", reward
+          print "done", done
+          print "state_2", state_2
           expected_q = float(self.critic.debug_q_value_for([state_1])[0][0])
           expected_target_q = float(self.target_critic.debug_q_value_for([state_1])[0][0])
           print "EXPECTED_Q_VALUES", expected_q, expected_target_q
-        # take action step in env
-        state_2, reward, done, _ = self.env.step(action)
+
         # add to replay memory
         self.replay_memory.add(state_1, action, reward, done, state_2)
         # do a training step (after waiting for buffer to fill a bit...)
@@ -364,8 +364,8 @@ class DeepDeterministicPolicyGradientAgent(object):
       stats["total_reward"] = np.sum(rewards)
       stats["episode_len"] = len(rewards)
       stats["replay_memory_size"] = self.replay_memory.size()
-      stats_stream.write("STATS %s\t%s\n" % (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                             json.dumps(stats)))
+      print "STATS %s\t%s" % (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                              json.dumps(stats))
 
       # save if required
       if saver_util is not None:
@@ -384,10 +384,6 @@ class DeepDeterministicPolicyGradientAgent(object):
       if max_run_time > 0 and time.time() > start_time + max_run_time:
         break
       episode_num += 1
-
-    # close stats_stream if required
-    if stats_stream is not sys.stdout:
-      stats_stream.close()
 
   def run_eval(self, num_episodes, add_noise=False):
     """ run num_episodes of eval and output episode length and rewards """
@@ -418,13 +414,8 @@ def main():
 
     # setup saver util and either load latest ckpt, or init if none...
     saver_util = None
-    ckpt_dir = None
-    if opts.run_id is not None:
-      ckpt_dir = "ckpts/%s" % opts.run_id
-    elif opts.ckpt_dir is not None:
-      ckpt_dir = opts.ckpt_dir
-    if ckpt_dir is not None:
-      saver_util = util.SaverUtil(sess, ckpt_dir, opts.ckpt_freq)
+    if opts.ckpt_dir is not None:
+      saver_util = util.SaverUtil(sess, opts.ckpt_dir, opts.ckpt_freq)
     else:
       sess.run(tf.initialize_all_variables())
 
@@ -438,7 +429,7 @@ def main():
     else:
       agent.run_training(opts.max_num_actions, opts.max_run_time,
                          opts.batch_size, opts.batches_per_step,
-                         saver_util, opts.run_id)
+                         saver_util)
       if saver_util is not None:
         saver_util.force_save()
 

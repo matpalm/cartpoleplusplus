@@ -21,8 +21,6 @@ parser.add_argument('--num-train-batches', type=int, default=10,
                     help="number of training batches to run")
 parser.add_argument('--rollouts-per-batch', type=int, default=10,
                     help="number of rollouts to run for each training batch")
-parser.add_argument('--run-id', type=str, default=None,
-                    help='if set use --ckpt-dir=ckpts/<run-id> and write stats to <run-id>.stats')
 parser.add_argument('--ckpt-dir', type=str, default=None,
                     help="if set save ckpts to this dir")
 parser.add_argument('--ckpt-freq', type=int, default=300,
@@ -123,10 +121,6 @@ class LikelihoodRatioPolicyGradientAgent(object):
     return float(loss)
 
   def run_training(self, num_batches, rollouts_per_batch, saver_util):
-    stats_f = None
-    if opts.run_id is not None:
-      stats_f = open("%s.stats" % opts.run_id, "a")
-
     for batch_id in xrange(num_batches):
       # perform a number of rollouts
       batch_observations, batch_actions, batch_advantages = [], [], []
@@ -154,21 +148,12 @@ class LikelihoodRatioPolicyGradientAgent(object):
                "batch": batch_id,
                "rewards": total_rewards,
                "loss": loss}
-      stream = stats_f if stats_f is not None else sys.stdout
-      stream.write("STATS %s\t%s\n" % (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                       json.dumps(stats)))
-
-      # dump progress to stderr, assuming stats going to file...
-      sys.stderr.write("\rbatch %s/%s             " % (batch_id, num_batches))
-      sys.stderr.flush()
+      print "STATS %s\t%s" % (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                              json.dumps(stats))
 
       # save if required
       if saver_util is not None:
         saver_util.save_if_required()
-
-    # close stats_f if required
-    if stats_f is not None:
-      stats_f.close()
 
   def run_eval(self, num_eval):
     for _ in xrange(num_eval):
@@ -186,13 +171,8 @@ def main():
 
     # setup saver util; will load latest ckpt, or init if none...
     saver_util = None
-    ckpt_dir = None
-    if opts.run_id is not None:
-      ckpt_dir = "ckpts/%s" % opts.run_id
-    elif opts.ckpt_dir is not None:
-      ckpt_dir = opts.ckpt_dir
-    if ckpt_dir is not None:
-      saver_util = util.SaverUtil(sess, ckpt_dir, opts.ckpt_freq)
+    if opts.ckpt_dir is not None:
+      saver_util = util.SaverUtil(sess, opts.ckpt_dir, opts.ckpt_freq)
     else:
       sess.run(tf.initialize_all_variables())
 
