@@ -46,17 +46,7 @@ parser.add_argument('--action-noise-theta', type=float, default=0.01,
                     help="OrnsteinUhlenbeckNoise theta (rate of change) param for action exploration")
 parser.add_argument('--action-noise-sigma', type=float, default=0.2,
                     help="OrnsteinUhlenbeckNoise sigma (magnitude) param for action exploration")
-# bullet cartpole specific ...
-parser.add_argument('--gui', action='store_true', help="whether to call env.render()")
-parser.add_argument('--delay', type=float, default=0.0, help="gui per step delay")
-parser.add_argument('--max-episode-len', type=int, default=200, help="maximum episode len for cartpole")
-parser.add_argument('--initial-force', type=float, default=55.0,
-                    help="magnitude of initial push, in random direction")
-parser.add_argument('--action-force', type=float, default=100.0,
-                    help="magnitude of action push. recall: discrete case used 50.0")
-parser.add_argument('--event-log', type=str, default=None,
-                    help="path to record event log.")
-
+bullet_cartpole.add_opts(parser)
 opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
 
@@ -421,10 +411,7 @@ class DeepDeterministicPolicyGradientAgent(object):
       print var.eval()
 
 def main():
-  env = bullet_cartpole.BulletCartpole(gui=opts.gui, action_force=opts.action_force,
-                                       max_episode_len=opts.max_episode_len,
-                                       initial_force=opts.initial_force, delay=opts.delay,
-                                       discrete_actions=False, event_log_file=opts.event_log)
+  env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=False)
 
   with tf.Session() as sess:  #config=tf.ConfigProto(log_device_placement=True)) as sess:
     agent = DeepDeterministicPolicyGradientAgent(env=env, agent_opts=opts)

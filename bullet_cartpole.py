@@ -10,6 +10,18 @@ import time
 
 np.set_printoptions(precision=3, suppress=True, linewidth=10000)
 
+def add_opts(parser):
+  parser.add_argument('--gui', action='store_true')
+  parser.add_argument('--delay', type=float, default=0.0)
+  parser.add_argument('--action-force', type=float, default=50.0,
+                      help="magnitude of action force applied per step")
+  parser.add_argument('--initial-force', type=float, default=55.0,
+                      help="magnitude of initial push, in random direction")
+  parser.add_argument('--event-log', type=str, default=None,
+                      help="path to record event log.")
+  parser.add_argument('--max-episode-len', type=int, default=200,
+                      help="maximum episode len for cartpole")
+
 def state_fields_of_pose_of(body_id):
   (x,y,z), (a,b,c,d) = p.getBasePositionAndOrientation(body_id)
   return np.array([x,y,z,a,b,c,d])
@@ -22,14 +34,12 @@ class BulletCartpole(gym.Env):
    'video.frames_per_second' : 50
   }
 
-  def __init__(self, gui=True, delay=0.0, max_episode_len=200, action_force=50.0,
-               initial_force=55.0, random_theta=True, discrete_actions=True,
-               event_log_file=None, repeats=2):
+  def __init__(self, opts, discrete_actions, random_theta=True, repeats=2):
 
-    self.gui = gui
-    self.delay = delay if gui else 0.0
+    self.gui = opts.gui
+    self.delay = opts.delay if self.gui else 0.0
 
-    self.max_episode_len = max_episode_len
+    self.max_episode_len = opts.max_episode_len
 
     # threshold for pole position.
     # if absolute x or y moves outside this we finish episode
@@ -42,12 +52,12 @@ class BulletCartpole(gym.Env):
     # force to apply per action simulation step.
     # in the discrete case this is the fixed force applied
     # in the continuous case each x/y is in range (-F, F)
-    self.action_force = action_force
+    self.action_force = opts.action_force
 
     # initial push force. this should be enough that taking no action will always
     # result in pole falling after initial_force_steps but not so much that you
     # can't recover. see also initial_force_steps.
-    self.initial_force = initial_force
+    self.initial_force = opts.initial_force
 
     # number of sim steps initial force is applied.
     # (see initial_force)
@@ -69,9 +79,9 @@ class BulletCartpole(gym.Env):
       self.action_space = spaces.Box(-1.0, 1.0, shape=(1, 2))
 
     # open event log
-    if event_log_file:
+    if opts.event_log:
       import event_log
-      self.event_log = event_log.EventLog(event_log_file)
+      self.event_log = event_log.EventLog(opts.event_log)
     else:
       self.event_log = None
 
@@ -107,7 +117,7 @@ class BulletCartpole(gym.Env):
   def _step(self, action):
     if self.done:
       print >>sys.stderr, "calling step after done????"
-      return self.state, 0, True, {}
+      return np.copy(self.state), 0, True, {}
 
     info = {}
 
@@ -143,14 +153,14 @@ class BulletCartpole(gym.Env):
     self.steps += 1
 
     # calculate reward.
-    reward = None
-    if self.discrete_actions:
-      reward = 1.0
-    else:
-      # base reward of 1.0 but linear ramp up to 5.0 if you don't apply much force.
-      max_abs_force = self.action_force * 2
-      abs_force = abs(fx) + abs(fy)
-      reward = 1.0 + 4.0 - (4.0 * abs_force / max_abs_force)
+    reward = 1.0
+#    if self.discrete_actions:
+#      reward = 1.0
+#    else:
+#      # base reward of 1.0 but linear ramp up to 5.0 if you don't apply much force.
+#      max_abs_force = self.action_force * 2
+#      abs_force = abs(fx) + abs(fy)
+#      reward = 1.0 + 4.0 - (4.0 * abs_force / max_abs_force)
 
     # Check for out of bounds by position or orientation on pole.
     # we (re)fetch pose explicitly rather than depending on fields in state.
@@ -174,7 +184,7 @@ class BulletCartpole(gym.Env):
       self.event_log.add(self.state, self.done, action, reward)
 
     # return observation
-    return self.state, reward, self.done, info
+    return np.copy(self.state), reward, self.done, info
 
   def pole_and_cart_state(self):
     return np.concatenate([state_fields_of_pose_of(self.pole),
@@ -206,4 +216,4 @@ class BulletCartpole(gym.Env):
     # bootstrap state
     for i in xrange(self.repeats):
       self.state[i] = self.pole_and_cart_state()
-    return self.state
+    return np.copy(self.state)

@@ -5,20 +5,12 @@ import random
 import time
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--gui', action='store_true')
-parser.add_argument('--action-force', type=float, default=50.0,
-                    help="magnitude of action force applied per step")
-parser.add_argument('--initial-force', type=float, default=55.0,
-                    help="magnitude of initial push, in random direction")
-parser.add_argument('--event-log', type=str, default=None,
-                    help="path to record event log.")
 parser.add_argument('--actions', type=str, default='0,1,2,3,4',
                     help='comma seperated list of actions to pick from, if env is discrete')
 parser.add_argument('--num-eval', type=int, default=1000)
-parser.add_argument('--delay', type=float, default=0.0)
-parser.add_argument('--max-episode-len', type=int, default=None)
 parser.add_argument('--action-type', type=str, default='discrete',
                     help="either 'discrete' or 'continuous'")
+bullet_cartpole.add_opts(parser)
 opts = parser.parse_args()
 
 actions = map(int, opts.actions.split(","))
@@ -30,9 +22,7 @@ elif opts.action_type == 'continuous':
 else:
   raise Exception("Unknown action type [%s]" % opts.action_type)
 
-env = bullet_cartpole.BulletCartpole(gui=opts.gui, initial_force=opts.initial_force,
-                                     discrete_actions=discrete_actions,
-                                     event_log_file=opts.event_log)
+env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=discrete_actions)
 
 for _ in xrange(opts.num_eval):
   env.reset()

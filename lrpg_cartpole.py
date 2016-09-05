@@ -27,17 +27,7 @@ parser.add_argument('--ckpt-dir', type=str, default=None,
                     help="if set save ckpts to this dir")
 parser.add_argument('--ckpt-freq', type=int, default=300,
                     help="freq (sec) to save ckpts")
-# bullet cartpole specific ...
-parser.add_argument('--gui', action='store_true',
-                    help="whether to call env.render()")
-parser.add_argument('--delay', type=float, default=0.0,
-                    help="gui per step delay")
-parser.add_argument('--max-episode-len', type=int, default=200,
-                    help="maximum episode len for cartpole")
-parser.add_argument('--initial-force', type=float, default=55.0,
-                    help="magnitude of initial push, in random direction")
-parser.add_argument('--action-force', type=float, default=50.0,
-                    help="magnitude of action push")
+bullet_cartpole.add_opts(parser)
 opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
 
@@ -187,10 +177,7 @@ class LikelihoodRatioPolicyGradientAgent(object):
 
 
 def main():
-  env = bullet_cartpole.BulletCartpole(gui=opts.gui, action_force=opts.action_force,
-                                       max_episode_len=opts.max_episode_len,
-                                       initial_force=opts.initial_force, delay=opts.delay,
-                                       discrete_actions=True)
+  env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=True)
 
   with tf.Session() as sess:
     agent = LikelihoodRatioPolicyGradientAgent(env=env, gui=opts.gui,
