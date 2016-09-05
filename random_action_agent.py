@@ -6,6 +6,8 @@ import time
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--gui', action='store_true')
+parser.add_argument('--action-force', type=float, default=50.0,
+                    help="magnitude of action force applied per step")
 parser.add_argument('--initial-force', type=float, default=55.0,
                     help="magnitude of initial push, in random direction")
 parser.add_argument('--action-force', type=float, default=50.0,
@@ -50,6 +52,6 @@ for _ in xrange(opts.num_eval):
       time.sleep(opts.delay)
     if opts.max_episode_len is not None and steps > opts.max_episode_len:
       break
-  print steps
 
-env.reset()  # to force final event log (clumsy)
+env.reset()  # hack to flush last event log if required
+
