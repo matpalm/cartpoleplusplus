@@ -132,10 +132,12 @@ class BulletCartpole(gym.Env):
     # step simulation forward. at the end of each repeat we capture the pole and
     # cart poses.
     for r in xrange(self.repeats):
-      p.stepSimulation()
-      p.applyExternalForce(self.cart, -1, (fx,fy,0), (0,0,0), p.WORLD_FRAME)
-      if self.delay > 0:
-        time.sleep(self.delay)
+      for _ in xrange(5):
+        # step forward 5 times; x5 with x2 repeats corresponds to x10 per step
+        p.stepSimulation()
+        p.applyExternalForce(self.cart, -1, (fx,fy,0), (0,0,0), p.WORLD_FRAME)
+        if self.delay > 0:
+          time.sleep(self.delay)
       self.state[r] = self.pole_and_cart_state()
 
     self.steps += 1
