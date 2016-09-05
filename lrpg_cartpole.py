@@ -13,7 +13,7 @@ import util
 
 np.set_printoptions(precision=5, threshold=10000, suppress=True, linewidth=10000)
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--num-hidden', type=int, default=32)
 parser.add_argument('--num-eval', type=int, default=0,
                     help="if >0 just run this many episodes with no training")
@@ -25,7 +25,7 @@ parser.add_argument('--run-id', type=str, default=None,
                     help='if set use --ckpt-dir=ckpts/<run-id> and write stats to <run-id>.stats')
 parser.add_argument('--ckpt-dir', type=str, default=None,
                     help="if set save ckpts to this dir")
-parser.add_argument('--ckpt-freq', type=int, default=60,
+parser.add_argument('--ckpt-freq', type=int, default=300,
                     help="freq (sec) to save ckpts")
 # bullet cartpole specific ...
 parser.add_argument('--gui', action='store_true',

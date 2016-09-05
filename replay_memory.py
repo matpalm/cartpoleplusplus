@@ -2,10 +2,15 @@ import numpy as np
 import sys
 
 class RingBuffer(object):
-  def __init__(self, buffer_size, depth=1):
+  def __init__(self, buffer_size, shape=1):
     self.buffer_size = buffer_size
-    self.depth = depth
-    self.memory = np.empty((buffer_size, depth))
+    if isinstance(shape, int):
+      # shape is just outer depth
+      memory_shape = (buffer_size, shape)
+    else:
+      # shape is explicitly a shape, add leading buffer size dimension
+      memory_shape = tuple([buffer_size]+list(shape))
+    self.memory = np.empty(memory_shape)
     self.insert = 0
     self.full = False
 
@@ -33,12 +38,12 @@ class RingBuffer(object):
     print "insert=%s full=%s" % (self.insert, self.full)
 
 class ReplayMemory(object):
-  def __init__(self, buffer_size, state_dim, action_dim):
-    self.state_1 = RingBuffer(buffer_size, state_dim)
+  def __init__(self, buffer_size, state_shape, action_dim):
+    self.state_1 = RingBuffer(buffer_size, state_shape)
     self.action = RingBuffer(buffer_size, action_dim)
     self.reward = RingBuffer(buffer_size, 1)
     self.terminal_mask = RingBuffer(buffer_size, 1)
-    self.state_2 = RingBuffer(buffer_size, state_dim)
+    self.state_2 = RingBuffer(buffer_size, state_shape)
     # TODO: write to disk as part of ckpting
 
   def add(self, s1, a, r, t, s2):

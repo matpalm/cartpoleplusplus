@@ -119,22 +119,23 @@ class Network(object):
 class ActorNetwork(Network):
   """ the actor represents the learnt policy mapping states to actions"""
 
-  def __init__(self, namespace, state_dim, action_dim,
+  def __init__(self, namespace, state_shape, action_dim,
                hidden_layer_config,
                explore_theta=0.0, explore_sigma=0.0,
                actor_activation_init_magnitude=1e-3):
     super(ActorNetwork, self).__init__(namespace)
-    self.state_dim = state_dim
     self.action_dim = action_dim
 
-    self.input_state = tf.placeholder(shape=[None, state_dim],
+    batched_state_shape = [None] + list(state_shape)
+    self.input_state = tf.placeholder(shape=batched_state_shape,
                                       dtype=tf.float32, name="actor_input_state")
 
     self.exploration_noise = util.OrnsteinUhlenbeckNoise(action_dim, explore_theta, explore_sigma)
 
     with tf.variable_scope(namespace):
       # stack of hidden layers
-      final_hidden = self.hidden_layers_starting_at(self.input_state, config=hidden_layer_config)
+      flat_input = slim.flatten(self.input_state)
+      final_hidden = self.hidden_layers_starting_at(flat_input, config=hidden_layer_config)
       # action dim output. note: actors out is (-1, 1) and scaled in environment as required.
       weights_initializer = tf.random_uniform_initializer(-actor_activation_init_magnitude,
                                                           actor_activation_init_magnitude)
@@ -203,7 +204,8 @@ class CriticNetwork(Network):
 
     with tf.variable_scope(namespace):
       # TODO: don't add action until later in stack?
-      concat_inputs = tf.concat(1, [self.input_state, self.input_action])
+      flat_input_state = slim.flatten(self.input_state)
+      concat_inputs = tf.concat(1, [flat_input_state, self.input_action])
       # stack of hidden layers
       final_hidden = self.hidden_layers_starting_at(concat_inputs, config=hidden_layer_config)
       # output from critic is a single q-value
@@ -279,17 +281,17 @@ class CriticNetwork(Network):
 class DeepDeterministicPolicyGradientAgent(object):
   def __init__(self, env, agent_opts):
     self.env = env
-    state_dim = self.env.observation_space.shape[0]
+    state_shape = self.env.observation_space.shape
     action_dim = self.env.action_space.shape[1]
 
     # for now, with single machine synchronous training, use a replay memory for training.
     # TODO: switch back to async training with multiple replicas (as in drivebot project)
     self.replay_memory = replay_memory.ReplayMemory(agent_opts.replay_memory_size, 
-                                                    state_dim, action_dim)
+                                                    state_shape, action_dim)
 
     # initialise base models for actor / critic and their corresponding target networks
     # target_actor is never used for online sampling so doesn't need explore noise.
-    self.actor = ActorNetwork("actor", state_dim, action_dim,
+    self.actor = ActorNetwork("actor", state_shape, action_dim,
                               agent_opts.actor_hidden_layers,
                               agent_opts.action_noise_theta,
                               agent_opts.action_noise_sigma,
@@ -297,7 +299,7 @@ class DeepDeterministicPolicyGradientAgent(object):
           
     self.critic = CriticNetwork("critic", self.actor, 
                                 agent_opts.critic_hidden_layers)
-    self.target_actor = ActorNetwork("target_actor", state_dim, action_dim,
+    self.target_actor = ActorNetwork("target_actor", state_shape, action_dim,
                                      agent_opts.actor_hidden_layers)
     self.target_critic = CriticNetwork("target_critic", self.target_actor,
                                        agent_opts.critic_hidden_layers)
@@ -382,8 +384,8 @@ class DeepDeterministicPolicyGradientAgent(object):
       # hack in occasional eval and dumping of weights
       if episode_num % 100 == 0:
         self.run_eval(1)
-      if episode_num % 10000 == 0:
-        self.debug_dump_network_weights()
+#      if episode_num % 10000 == 0:
+#        self.debug_dump_network_weights()
 
       # exit when finished
       num_actions_taken += len(rewards)

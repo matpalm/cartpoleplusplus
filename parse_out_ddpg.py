@@ -79,11 +79,11 @@ for line in sys.stdin:
       tag, steps = cols
       assert tag == "EVAL"
       total_reward = steps
-    elif len(cols) == 3:
-      tag, steps, total_reward = cols
+    elif len(cols) == 4:
+      tag, episode, steps, total_reward = cols
       assert tag == "EVAL"
     else:
-      assert False
+      assert False, line
     assert steps >= 0
     assert total_reward >= 0
     f_eval.write("%s %s %s\n" % (time, steps, total_reward))
