@@ -33,7 +33,7 @@ for line in sys.stdin:
 
   if line.startswith("STATS"):
     cols = line.split("\t")
-    assert len(cols) == 2
+    assert len(cols) == 2, line
     try:
       d = json.loads(cols[1])
       if should_emit("EPISODE_LEN"):
@@ -81,6 +81,9 @@ for line in sys.stdin:
       total_reward = steps
     elif len(cols) == 4:
       tag, episode, steps, total_reward = cols
+      assert tag == "EVAL"
+    elif len(cols) == 4:
+      tag, _, steps, total_reward = cols
       assert tag == "EVAL"
     else:
       assert False, line
