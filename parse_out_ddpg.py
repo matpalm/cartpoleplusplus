@@ -85,6 +85,9 @@ for line in sys.stdin:
     elif len(cols) == 4:
       tag, _, steps, total_reward = cols
       assert tag == "EVAL"
+    elif len(cols) == 4:
+      tag, _, steps, total_reward = cols
+      assert tag == "EVAL"
     else:
       assert False, line
     assert steps >= 0
