@@ -1,36 +1,23 @@
 # cartpole ++
 
 cartpole++ is a non trivial 3d version of cartpole 
-simulated using [bullet physics](http://bulletphysics.org/) where the pole isn't connected to the cart.
+simulated using [bullet physics](http://bulletphysics.org/) where the pole _isn't_ connected to the cart.
 
 ![cartpole](cartpole.png)
 
 this repo contains a [gym env](https://gym.openai.com/) for this cartpole as well as example policies trained with ...
 
 * a [deep q network](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf) from [keras-rl](https://github.com/matthiasplappert/keras-rl)
-* a likelihood ratio policy gradient method (lrpg_cartpole.py) for the discrete control version
-* a [deep deterministic policy gradient method](http://arxiv.org/abs/1509.02971) (ddpg_cartpole.py) for the continuous control version
+* a hand rolled likelihood ratio policy gradient method [lrpg_cartpole.py](lrpg_cartpole.py) for the discrete control version
+* a hand rolled [deep deterministic policy gradient method](http://arxiv.org/abs/1509.02971) [ddpg_cartpole.py](ddpg_cartpole.py) for the continuous control version
 
-observation state is 28d tuple
-* 7d pose of cart (3d position + 4d quaternion orientation)
+observation state is (14, 2) shaped 
+* 7d pose of cart (3d position + 4d quaternion orientation) concatted to...
 * 7d pose of pole (also included since pole isn't connected to cart)
-* 7d pose of cart last time step
+* 7d pose of cart last time step concatted to...
 * 7d pose of pole last time step
 
 see [the blog post](http://matpalm.com/blog/cartpole_plus_plus/) for more info...
-
-```
-# some random things i did...
-sudo apt-get install libhdf5-dev
-virtualenv venv --system-site-packages
-. venv/bin/activate
-pip install keras numpy h5py 
-pip install <whatever_tensorflow_wheel_file>
-export PYTHONPATH=$PYTHONPATH:$HOME/dev/keras-rl
-
-# for replay logging will need to compile protobuffer
-protoc event.proto --python_path=.
-```
 
 ## discrete version
 
@@ -94,7 +81,7 @@ $ ./dqn_bullet_cartpole.py \
 
 ### training using likelihood ratio policy gradient
 
-policy gradient nails it; though this is after >12hrs training :/
+policy gradient nails it
 
 ```
 $ ./lrpg_cartpole.py --rollouts-per-batch=20 --num-train-batches=100 \
@@ -140,3 +127,10 @@ result by numbers
 result visually (click through for video)
 
 [![link](https://img.youtube.com/vi/8X05GA5ZKvQ/0.jpg)](https://www.youtube.com/watch?v=8X05GA5ZKvQ)
+
+## build stuff
+
+```
+# for replay logging will need to compile protobuffer
+protoc event.proto --python_path=.
+```
