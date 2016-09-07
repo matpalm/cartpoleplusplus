@@ -18,16 +18,16 @@ observation state in the low dimensional case is (14, 2) shaped
 * 7d pose of pole last time step
 
 observation state in the high dimensional case is (50, 50, 6) shaped made up of ...
-* (50, 50, 3) shaped 50x50 pixel RGB rendering of the scene 
+* (50, 50, 3) shaped 50x50 pixel RGB rendering of the scene  (eg below)
 * (50, 50, 3) rendering of the scene at last time step
 
 ![eg_render](eg_render.png)
 
 ( testing the high dimensional case now, see the `pixels` branch )
 
-see [the blog post](http://matpalm.com/blog/cartpole_plus_plus/) for more info...
+in general see [the blog post](http://matpalm.com/blog/cartpole_plus_plus/) for more info...
 
-## discrete version
+## discrete control version
 
 * 5 actions; go left, right, up, down, do nothing
 * +1 reward for each step pole is up.
@@ -107,7 +107,7 @@ result visually (click through for video)
 
 [![link](https://img.youtube.com/vi/aricda9gs2I/0.jpg)](https://www.youtube.com/watch?v=aricda9gs2I)
 
-## continuous version
+## continuous control version
 
 * 2d action; force to apply on cart in x & y directions
 * +1 base reward for each step pole is up. up to an additional +4 as force applied tends to 0.
