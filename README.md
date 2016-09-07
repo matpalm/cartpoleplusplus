@@ -17,9 +17,11 @@ observation state in the low dimensional case is (14, 2) shaped
 * 7d pose of cart last time step concatted to...
 * 7d pose of pole last time step
 
-observation state in the high dimensional case is (50, 50, 6) shaped
-* (50, 50, 3) rendering of the scene concatted in axis 2 to...
-* (50, 50, 5) rendering of the scene at last time step
+observation state in the high dimensional case is (50, 50, 6) shaped made up of ...
+* (50, 50, 3) shaped 50x50 pixel RGB rendering of the scene 
+* (50, 50, 3) rendering of the scene at last time step
+
+![eg_render](eg_render.png)
 
 ( testing the high dimensional case now, see the `pixels` branch )
 
