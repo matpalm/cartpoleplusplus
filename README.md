@@ -8,14 +8,20 @@ simulated using [bullet physics](http://bulletphysics.org/) where the pole _isn'
 this repo contains a [gym env](https://gym.openai.com/) for this cartpole as well as example policies trained with ...
 
 * a [deep q network](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf) from [keras-rl](https://github.com/matthiasplappert/keras-rl)
-* a hand rolled likelihood ratio policy gradient method [lrpg_cartpole.py](lrpg_cartpole.py) for the discrete control version
-* a hand rolled [deep deterministic policy gradient method](http://arxiv.org/abs/1509.02971) [ddpg_cartpole.py](ddpg_cartpole.py) for the continuous control version
+* a hand rolled likelihood ratio policy gradient method ( [lrpg_cartpole.py](lrpg_cartpole.py) ) for the discrete control version
+* a hand rolled [deep deterministic policy gradient method](http://arxiv.org/abs/1509.02971) ( [ddpg_cartpole.py](ddpg_cartpole.py) ) for the continuous control version
 
-observation state is (14, 2) shaped 
+observation state in the low dimensional case is (14, 2) shaped 
 * 7d pose of cart (3d position + 4d quaternion orientation) concatted to...
 * 7d pose of pole (also included since pole isn't connected to cart)
 * 7d pose of cart last time step concatted to...
 * 7d pose of pole last time step
+
+observation state in the high dimensional case is (50, 50, 6) shaped
+* (50, 50, 3) rendering of the scene concatted in axis 2 to...
+* (50, 50, 5) rendering of the scene at last time step
+
+( testing the high dimensional case now, see the `pixels` branch )
 
 see [the blog post](http://matpalm.com/blog/cartpole_plus_plus/) for more info...
 
@@ -53,7 +59,7 @@ $ ./random_action_agent.py --initial-force=55 --actions="0,1,2,3,4" --num-eval=1
 ### training a dqn
 
 ```
-$ ./dqn_bullet_cartpole.py \
+$ ./dqn_cartpole.py \
  --num-train=2000000 --num-eval=0 \
  --save-file=ckpt.h5
 ```
@@ -61,7 +67,7 @@ $ ./dqn_bullet_cartpole.py \
 result by numbers...
 
 ```
-$ ./dqn_bullet_cartpole.py \
+$ ./dqn_cartpole.py \
  --load-file=ckpt.h5 \
  --num-train=0 --num-eval=100 \
  | grep ^Episode | sed -es/.*steps:// | ./deciles.py 
@@ -73,7 +79,7 @@ result visually (click through for video)
 [![link](https://img.youtube.com/vi/zteyMIvhn1U/0.jpg)](https://www.youtube.com/watch?v=zteyMIvhn1U)
 
 ```
-$ ./dqn_bullet_cartpole.py \
+$ ./dqn_cartpole.py \
  --gui --delay=0.005 \
  --load-file=run11_50.weights.2.h5 \
  --num-train=0 --num-eval=100
