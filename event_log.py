@@ -34,19 +34,27 @@ class EventLog(object):
         self.log_file.flush()
     self.episode_entry = event_pb2.Episode()
 
-  def add(self, state, done, action, reward, render=None):
+  def add(self, state, use_raw_pixels, done, action, reward):
     event = self.episode_entry.event.add()
-    assert len(state) == 14
-    event.state.pole_pose.extend(state[:7])
-    event.state.cart_pose.extend(state[7:])
+    if use_raw_pixels:
+      # TODO: be nice to have pose info here too in the pixel case...
+      for r in range(state.shape[2] / 3):  # 3 channels per action repeat
+        s = event.state.add()
+        s.render.width = state.shape[1]
+        s.render.height = state.shape[0]
+        s.render.png_bytes = rgb_to_png(state[:,:,3*r:3*(r+1)])
+    else:
+      for r in range(state.shape[0]):
+        s = event.state.add()
+        s.cart_pose.extend(map(float, state[r][0]))
+        s.pole_pose.extend(map(float, state[r][1]))
     event.is_terminal = done
-    assert action.shape[0] == 1  # never log batch operations
-    event.action.extend(map(float, action[0]))
+    if isinstance(action, int):
+      event.action.append(action)  # single action
+    else:
+      assert action.shape[0] == 1  # never log batch operations
+      event.action.extend(map(float, action[0]))
     event.reward = reward
-    if render is not None:
-      event.state.render.width = render.shape[1]
-      event.state.render.height = render.shape[0]
-      event.state.render.png_bytes = rgb_to_png(render)
 
 class EventLogReader(object):
 
@@ -85,18 +93,22 @@ if __name__ == "__main__":
     make_dir(opts.img_output_dir)
 
   elr = EventLogReader(opts.log_file)
-  for e_id, episode in enumerate(elr.entries()):
+  for episode_id, episode in enumerate(elr.entries()):
     if opts.echo:
-      print "-----", e_id
+      print "-----", episode_id
       print episode
     if opts.img_output_dir is not None:
-      make_dir("%s/e_%05d" % (opts.img_output_dir, e_id))
-      for s_id, event in enumerate(episode.event):
-        with open("%s/e_%05d/s_%05d.png" % (opts.img_output_dir, e_id, s_id), "w") as f:
-          f.write(event.state.render.png_bytes)
+      dir = "%s/ep_%05d" % (opts.img_output_dir, episode_id)
+      make_dir(dir)
+      for event_id, event in enumerate(episode.event):
+        for state_id, state in enumerate(event.state):
+          assert state.render.png_bytes
+          filename = "%s/ev_%05d_r%d.png" % (dir, event_id, state_id)
+          with open(filename, "w") as f:
+            f.write(state.render.png_bytes)
     if opts.max_process is not None and e_id+1 >= opts.max_process:
       break
-  print >>sys.stderr, "read", e_id+1, "episodes"
+  print >>sys.stderr, "read", episode_id+1, "episodes"
 
 
 

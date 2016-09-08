@@ -8,7 +8,7 @@ class RingBuffer(object):
       if isinstance(shape, int):
         self.memory = np.empty((buffer_size, shape))
       else:
-        # convert shape (a, b) to (buffer_size, a, b)
+        # convert shape (a, b, ...) to (buffer_size, a, b, ...)
         self.memory = np.empty([buffer_size]+list(shape))
     except MemoryError:
       print >>sys.stderr, "MemoryError. replay memory size (%s) too large" % buffer_size

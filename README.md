@@ -1,38 +1,32 @@
 # cartpole ++
 
 cartpole++ is a non trivial 3d version of cartpole 
-simulated using [bullet physics](http://bulletphysics.org/) where the pole isn't connected to the cart.
+simulated using [bullet physics](http://bulletphysics.org/) where the pole _isn't_ connected to the cart.
 
 ![cartpole](cartpole.png)
 
 this repo contains a [gym env](https://gym.openai.com/) for this cartpole as well as example policies trained with ...
 
 * a [deep q network](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf) from [keras-rl](https://github.com/matthiasplappert/keras-rl)
-* a likelihood ratio policy gradient method (lrpg_cartpole.py) for the discrete control version
-* a [deep deterministic policy gradient method](http://arxiv.org/abs/1509.02971) (ddpg_cartpole.py) for the continuous control version
+* a hand rolled likelihood ratio policy gradient method ( [lrpg_cartpole.py](lrpg_cartpole.py) ) for the discrete control version
+* a hand rolled [deep deterministic policy gradient method](http://arxiv.org/abs/1509.02971) ( [ddpg_cartpole.py](ddpg_cartpole.py) ) for the continuous control version
 
-observation state is 28d tuple
-* 7d pose of cart (3d position + 4d quaternion orientation)
-* 7d pose of pole (also included since pole isn't connected to cart)
-* 7d pose of cart last time step
-* 7d pose of pole last time step
+observation state in the low dimensional case is shaped (2, 2, 7)
+* axis 0 is a time step. each `env.step` action is repeated in simulation 10 times and `state[0,:,:]` is pose information after step 5 and `state[1,:,:]` is pose information after step 10. the delta between these two can be used to derive velocity.
+* axis 1 represents the object. `state[:,0,:]` is the cart, `state[:,1,:]` is the pole.
+# axis 2 contains the object's 7d pose (3d position + 4d quaternion orientation)
 
-see [the blog post](http://matpalm.com/blog/cartpole_plus_plus/) for more info...
+observation state in the high dimensional case is shaped (50, 50, 6) where
+* [:,:,0:3] is a 50x50 pixel RGB rendering of the scene at action repeat step 5 (eg below)
+* [:,:,3:6] is a 50x50 pixel RGB rendering of the scene at action repeat step 10
 
-```
-# some random things i did...
-sudo apt-get install libhdf5-dev
-virtualenv venv --system-site-packages
-. venv/bin/activate
-pip install keras numpy h5py 
-pip install <whatever_tensorflow_wheel_file>
-export PYTHONPATH=$PYTHONPATH:$HOME/dev/keras-rl
+![eg_render](eg_render.png)
 
-# for replay logging will need to compile protobuffer
-protoc event.proto --python_out=.
-```
+( testing the high dimensional case now, see the `pixels` branch )
 
-## discrete version
+in general see [the blog post](http://matpalm.com/blog/cartpole_plus_plus/) for more info...
+
+## discrete control version
 
 * 5 actions; go left, right, up, down, do nothing
 * +1 reward for each step pole is up.
@@ -66,7 +60,7 @@ $ ./random_action_agent.py --initial-force=55 --actions="0,1,2,3,4" --num-eval=1
 ### training a dqn
 
 ```
-$ ./dqn_bullet_cartpole.py \
+$ ./dqn_cartpole.py \
  --num-train=2000000 --num-eval=0 \
  --save-file=ckpt.h5
 ```
@@ -74,7 +68,7 @@ $ ./dqn_bullet_cartpole.py \
 result by numbers...
 
 ```
-$ ./dqn_bullet_cartpole.py \
+$ ./dqn_cartpole.py \
  --load-file=ckpt.h5 \
  --num-train=0 --num-eval=100 \
  | grep ^Episode | sed -es/.*steps:// | ./deciles.py 
@@ -86,7 +80,7 @@ result visually (click through for video)
 [![link](https://img.youtube.com/vi/zteyMIvhn1U/0.jpg)](https://www.youtube.com/watch?v=zteyMIvhn1U)
 
 ```
-$ ./dqn_bullet_cartpole.py \
+$ ./dqn_cartpole.py \
  --gui --delay=0.005 \
  --load-file=run11_50.weights.2.h5 \
  --num-train=0 --num-eval=100
@@ -94,7 +88,7 @@ $ ./dqn_bullet_cartpole.py \
 
 ### training using likelihood ratio policy gradient
 
-policy gradient nails it; though this is after >12hrs training :/
+policy gradient nails it
 
 ```
 $ ./lrpg_cartpole.py --rollouts-per-batch=20 --num-train-batches=100 \
@@ -112,7 +106,7 @@ result visually (click through for video)
 
 [![link](https://img.youtube.com/vi/aricda9gs2I/0.jpg)](https://www.youtube.com/watch?v=aricda9gs2I)
 
-## continuous version
+## continuous control version
 
 * 2d action; force to apply on cart in x & y directions
 * +1 base reward for each step pole is up. up to an additional +4 as force applied tends to 0.
@@ -141,9 +135,12 @@ result visually (click through for video)
 
 [![link](https://img.youtube.com/vi/8X05GA5ZKvQ/0.jpg)](https://www.youtube.com/watch?v=8X05GA5ZKvQ)
 
+
 ## general utils
 
 run a random agent, logging events to disk (outputs total rewards per episode)
+
+note: for replay logging will need to compile protobuffer `protoc event.proto --python_out=.`
 
 ```
 $ ./random_action_agent.py --event-log=test.log --num-eval=10 --action-type=continuous
@@ -197,7 +194,3 @@ eg_renders/e_00000/s_00001.png
 eg_renders/e_00009/s_00018.png
 eg_renders/e_00009/s_00019.png
 ```
-
-
-
-

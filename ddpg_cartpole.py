@@ -23,8 +23,6 @@ parser.add_argument('--max-num-actions', type=int, default=0,
 parser.add_argument('--max-run-time', type=int, default=0,
                     help="train for (at least) this number of seconds (always finish current episode)"
                          " ignore if <=0")
-parser.add_argument('--run-id', type=str, default=None,
-                    help="if set use --ckpt-dir=ckpts/<run-id> and write stats to <run-id>.stats")
 parser.add_argument('--ckpt-dir', type=str, default=None, help="if set save ckpts to this dir")
 parser.add_argument('--ckpt-freq', type=int, default=300, help="freq (sec) to save ckpts")
 parser.add_argument('--batch-size', type=int, default=128, help="training batch size")
@@ -32,7 +30,6 @@ parser.add_argument('--batches-per-step', type=int, default=5,
                     help="number of batches to train per step")
 parser.add_argument('--target-update-rate', type=float, default=0.001,
                     help="affine combo for updating target networks each time we run a training batch")
-parser.add_argument('--use-raw-pixels', action='store_true', help="just use raw pixels")
 parser.add_argument('--actor-hidden-layers', type=str, default="100,100,50", help="actor hidden layer sizes")
 parser.add_argument('--critic-hidden-layers', type=str, default="100,100,50", help="actor hidden layer sizes")
 parser.add_argument('--actor-learning-rate', type=float, default=0.001, help="learning rate for actor")
@@ -47,17 +44,7 @@ parser.add_argument('--action-noise-theta', type=float, default=0.01,
                     help="OrnsteinUhlenbeckNoise theta (rate of change) param for action exploration")
 parser.add_argument('--action-noise-sigma', type=float, default=0.2,
                     help="OrnsteinUhlenbeckNoise sigma (magnitude) param for action exploration")
-# bullet cartpole specific ...
-parser.add_argument('--gui', action='store_true', help="use gui")
-parser.add_argument('--delay', type=float, default=0.0, help="gui per step delay")
-parser.add_argument('--max-episode-len', type=int, default=200, help="maximum episode len for cartpole")
-parser.add_argument('--initial-force', type=float, default=55.0,
-                    help="magnitude of initial push, in random direction")
-parser.add_argument('--action-force', type=float, default=100.0,
-                    help="magnitude of action push. recall: discrete case used 50.0")
-parser.add_argument('--event-log', type=str, default=None,
-                    help="path to record event log.")
-
+bullet_cartpole.add_opts(parser)
 opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
 sys.stderr.write("first training at epoch %s\n" % (opts.batch_size * \
@@ -141,19 +128,21 @@ class ActorNetwork(Network):
                use_raw_pixels=False):
     super(ActorNetwork, self).__init__(namespace)
 
-    self.input_state = tf.placeholder(shape=[None] + list(state_shape),  # add leading batch axis
+    batched_state_shape = [None] + list(state_shape)
+    self.input_state = tf.placeholder(shape=batched_state_shape,
                                       dtype=tf.float32, name="actor_input_state")
 
     self.exploration_noise = util.OrnsteinUhlenbeckNoise(action_dim, explore_theta, explore_sigma)
 
     with tf.variable_scope(namespace):
       if use_raw_pixels:
-        # simple conv net
+        # simple conv net with one hidden layer on top
         conv_net = self.simple_conv_net_on(self.input_state)
         final_hidden = slim.fully_connected(conv_net, 50, scope='hidden1')
       else:
-        # stack of hidden layers
-        final_hidden = self.hidden_layers_starting_at(self.input_state,
+        # stack of hidden layers on flattened input; (batch,2,2,7) -> (batch,28)
+        flat_input_state = slim.flatten(self.input_state, scope='flat')
+        final_hidden = self.hidden_layers_starting_at(flat_input_state,
                                                       hidden_layer_config)
 
       # TODO: add dropout for both nets!
@@ -238,7 +227,9 @@ class CriticNetwork(Network):
                                             inputs=concat_inputs,
                                             num_outputs=50)
       else:
-        concat_inputs = tf.concat(1, [self.input_state, self.input_action])
+        # stack of hidden layers on flattened input; (batch,2,2,7) -> (batch,28)
+        flat_input_state = slim.flatten(self.input_state, scope='flat')
+        concat_inputs = tf.concat(1, [flat_input_state, self.input_action])
         final_hidden = self.hidden_layers_starting_at(concat_inputs,
                                                       hidden_layer_config)
 
@@ -359,11 +350,7 @@ class DeepDeterministicPolicyGradientAgent(object):
 
 
   def run_training(self, max_num_actions, max_run_time, batch_size, batches_per_step,
-                   saver_util, run_id):
-    # setup a stream to write stats to
-    stats_stream = sys.stdout
-    if run_id is not None:
-      stats_stream = open("%s.stats" % run_id, "a")
+                   saver_util):
 
     # log start time, in case we are limiting by time...
     start_time = time.time()
@@ -378,19 +365,25 @@ class DeepDeterministicPolicyGradientAgent(object):
       # run an episode
       state_1 = self.env.reset()
       done = False
+      # about 1% of the time we record verbose info for entire episode about loss etc
+      debug = np.random.random() < 0.01
       while not done:
-        # about 1% of the time we record verbose info about loss etc.
-        debug = np.random.random() < 0.01
         # choose action
         action = self.actor.action_given([state_1], add_noise=True)
-        # for verbose debugging check the expected q values in both critic and target
-        # critic networks. we expect this to rise.
+        # take action step in env
+        state_2, reward, done, _ = self.env.step(action)
+
         if debug:
+          print "-----"
+          print "state_1", state_1
+          print "action", action
+          print "reward", reward
+          print "done", done
+          print "state_2", state_2
           expected_q = float(self.critic.debug_q_value_for([state_1])[0][0])
           expected_target_q = float(self.target_critic.debug_q_value_for([state_1])[0][0])
           print "EXPECTED_Q_VALUES", expected_q, expected_target_q
-        # take action step in env
-        state_2, reward, done, _ = self.env.step(action)
+
         # add to replay memory
         self.replay_memory.add(state_1, action, reward, done, state_2)
         # do a training step (after waiting for buffer to fill a bit...)
@@ -412,8 +405,8 @@ class DeepDeterministicPolicyGradientAgent(object):
       stats["total_reward"] = np.sum(rewards)
       stats["episode_len"] = len(rewards)
       stats["replay_memory_size"] = self.replay_memory.size()
-      dts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-      stats_stream.write("STATS %s\t%s\n" % (dts, json.dumps(stats)))
+      print "STATS %s\t%s" % (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                              json.dumps(stats))
 
       # save if required
       if saver_util is not None:
@@ -422,8 +415,8 @@ class DeepDeterministicPolicyGradientAgent(object):
       # hack in occasional eval and dumping of weights
       if episode_num % 100 == 0:
         self.run_eval(1)
-      if episode_num % 10000 == 0:
-        self.debug_dump_network_weights()
+#      if episode_num % 10000 == 0:
+#        self.debug_dump_network_weights()
 
       # exit when finished
       num_actions_taken += len(rewards)
@@ -432,10 +425,6 @@ class DeepDeterministicPolicyGradientAgent(object):
       if max_run_time > 0 and time.time() > start_time + max_run_time:
         break
       episode_num += 1
-
-    # close stats_stream if required
-    if stats_stream is not sys.stdout:
-      stats_stream.close()
 
   def run_eval(self, num_episodes, add_noise=False):
     """ run num_episodes of eval and output episode length and rewards """
@@ -459,25 +448,15 @@ class DeepDeterministicPolicyGradientAgent(object):
 #      print var.eval()
 
 def main():
-  env = bullet_cartpole.BulletCartpole(gui=opts.gui, action_force=opts.action_force,
-                                       max_episode_len=opts.max_episode_len,
-                                       initial_force=opts.initial_force, delay=opts.delay,
-                                       discrete_actions=False,
-                                       event_log_file=opts.event_log,
-                                       state_as_raw_pixels=opts.use_raw_pixels)
+  env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=False)
 
   with tf.Session() as sess:  #config=tf.ConfigProto(log_device_placement=True)) as sess:
     agent = DeepDeterministicPolicyGradientAgent(env=env, agent_opts=opts)
 
     # setup saver util and either load latest ckpt, or init if none...
     saver_util = None
-    ckpt_dir = None
-    if opts.run_id is not None:
-      ckpt_dir = "ckpts/%s" % opts.run_id
-    elif opts.ckpt_dir is not None:
-      ckpt_dir = opts.ckpt_dir
-    if ckpt_dir is not None:
-      saver_util = util.SaverUtil(sess, ckpt_dir, opts.ckpt_freq)
+    if opts.ckpt_dir is not None:
+      saver_util = util.SaverUtil(sess, opts.ckpt_dir, opts.ckpt_freq)
     else:
       sess.run(tf.initialize_all_variables())
 
@@ -491,7 +470,7 @@ def main():
     else:
       agent.run_training(opts.max_num_actions, opts.max_run_time,
                          opts.batch_size, opts.batches_per_step,
-                         saver_util, opts.run_id)
+                         saver_util)
       if saver_util is not None:
         saver_util.force_save()
 

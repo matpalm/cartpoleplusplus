@@ -7,6 +7,7 @@ parser.add_argument('files', metavar='F', type=str, nargs='+',
                     help='files to process')
 parser.add_argument('--pg-emit-all', action='store_true',
                     help="if set emit all rewards in pg case. if false just emit stats")
+parser.add_argument('--nth', type=int, default=1, help="emit every nth")
 opts = parser.parse_args()
 
 # fields we output
@@ -16,8 +17,12 @@ KEYS = ["run_id", "exp", "replica", "episode", "loss", "r_min", "r_mean", "r_max
 print "\t".join(KEYS)
 
 # emit a record.
+n = 0
 def emit(data):
-  print "\t".join(map(str, [data[key] for key in KEYS]))
+  global n
+  if n % opts.nth == 0:
+    print "\t".join(map(str, [data[key] for key in KEYS]))
+  n += 1
 
 for filename in opts.files:
   run_id = filename.replace(".out", "").replace(".stats", "")

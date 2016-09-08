@@ -75,14 +75,16 @@ for line in sys.stdin:
        not line.startswith("EVALSTEP") and \
        should_emit("EVAL"):
     cols = line.split(" ")
-    if len(cols) == 3:  # format for <= run43
-      tag, steps, total_reward = cols
-      assert tag == "EVAL"
+    if len(cols) == 2:  # OLD FORMAT
+      tag, steps = cols
+      total_reward = steps
+    elif len(cols) == 3:
+      tag, episode, steps, total_reward = cols
     elif len(cols) == 4:
       tag, _, steps, total_reward = cols
-      assert tag == "EVAL"
     else:
       assert False, line
+    assert tag == "EVAL"
     assert steps >= 0
     assert total_reward >= 0
     f_eval.write("%s %s %s\n" % (time, steps, total_reward))

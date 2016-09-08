@@ -10,25 +10,23 @@ import time
 
 np.set_printoptions(precision=3, suppress=True, linewidth=10000)
 
+def add_opts(parser):
+  parser.add_argument('--gui', action='store_true')
+  parser.add_argument('--delay', type=float, default=0.0)
+  parser.add_argument('--action-force', type=float, default=50.0,
+                      help="magnitude of action force applied per step")
+  parser.add_argument('--initial-force', type=float, default=55.0,
+                      help="magnitude of initial push, in random direction")
+  parser.add_argument('--event-log', type=str, default=None,
+                      help="path to record event log.")
+  parser.add_argument('--max-episode-len', type=int, default=200,
+                      help="maximum episode len for cartpole")
+  parser.add_argument('--use-raw-pixels', action='store_true',
+                      help="use raw pixels as state instead of cart/pole poses")
+
 def state_fields_of_pose_of(body_id):
   (x,y,z), (a,b,c,d) = p.getBasePositionAndOrientation(body_id)
   return np.array([x,y,z,a,b,c,d])
-
-def render_rgb(width, height):
-  # call to pybullet render
-  cameraPos = (0.5, 0.5, 0.5)
-  targetPos = (0, 0, 0.2)
-  cameraUp = (0, 0, 1)
-  nearVal, farVal = 1, 20
-  fov = 60
-  _w, _h, rgba, _depth, _objects = p.renderImage(width, height,
-                                                 cameraPos, targetPos, cameraUp,
-                                                 nearVal, farVal, fov)
-  # convert from 1d array of 1 -> 255 to np array 0.0 -> 1.0
-  rgba_img = np.reshape(np.asarray(rgba, dtype=np.float32),
-                        (height, width, 4))
-  rgb_img = rgba_img[:,:,:3]  # slice off alpha, always 1.0
-  return rgb_img / 255
 
 class BulletCartpole(gym.Env):
 
@@ -38,14 +36,11 @@ class BulletCartpole(gym.Env):
    'video.frames_per_second' : 50
   }
 
-  def __init__(self, gui=True, delay=0.0, max_episode_len=200, action_force=50.0,
-               initial_force=55.0, random_theta=True, discrete_actions=True,
-               event_log_file=None, state_as_raw_pixels=False,
-               render_width=160, render_height=120):
+  def __init__(self, opts, discrete_actions, random_theta=True, repeats=2):
+    self.gui = opts.gui
+    self.delay = opts.delay if self.gui else 0.0
 
-    self.gui = gui
-    self.delay = delay if gui else 0.0
-    self.max_episode_len = max_episode_len
+    self.max_episode_len = opts.max_episode_len
 
     # threshold for pole position.
     # if absolute x or y moves outside this we finish episode
@@ -58,15 +53,12 @@ class BulletCartpole(gym.Env):
     # force to apply per action simulation step.
     # in the discrete case this is the fixed force applied
     # in the continuous case each x/y is in range (-F, F)
-    self.action_force = action_force
-
-    # apply action for this many sim time steps.
-    self.sim_step_rate = 10
+    self.action_force = opts.action_force
 
     # initial push force. this should be enough that taking no action will always
     # result in pole falling after initial_force_steps but not so much that you
     # can't recover. see also initial_force_steps.
-    self.initial_force = initial_force
+    self.initial_force = opts.initial_force
 
     # number of sim steps initial force is applied.
     # (see initial_force)
@@ -81,41 +73,48 @@ class BulletCartpole(gym.Env):
     self.discrete_actions = discrete_actions
 
     # 5 discrete actions: no push, left, right, up, down
+    # 2 continuous action elements; fx & fy
     if self.discrete_actions:
       self.action_space = spaces.Discrete(5)
     else:
       self.action_space = spaces.Box(-1.0, 1.0, shape=(1, 2))
 
     # open event log
-    if event_log_file:
+    if opts.event_log:
       import event_log
-      self.event_log = event_log.EventLog(event_log_file)
+      self.event_log = event_log.EventLog(opts.event_log)
     else:
       self.event_log = None
 
-    # whether we are using raw pixels for state or just pole + cart pose
-    self.state_as_raw_pixels = state_as_raw_pixels
+    # how many time to repeat each action per step().
+    self.repeats = repeats
 
-    # if either event_log_file or state_as_raw_pixels is set we will be rendering
-    self.render_width = render_width
-    self.render_height = render_height
+    # whether we are using raw pixels for state or just pole + cart pose
+    self.use_raw_pixels = opts.use_raw_pixels
+
+    # in the use_raw_pixels is set we will be rendering
+    # TODO: configuration
+    self.render_width = 50
+    self.render_height = 50
 
     # decide observation space
-    if self.state_as_raw_pixels:
-      # in high dimensional case observation space is _two_ rendered rgb images
-      # concatenated; first is current frame, second is previous frame
-      self.observation_space = gym.spaces.Box(0, 1, (render_height*2, render_width, 3))
+    if self.use_raw_pixels:
+      # in high dimensional case observation space is RGB images (H, W, 3)
+      # concatenated in axis=2, i.e. final shape is (H, W, R*3) for R repeats
+      state_shape = (self.render_height, self.render_width, self.repeats * 3)
     else:
-      # in low dimensional case observation state space is ...
-      #  7 tuple for pose (pos x,y,z & quaternion orientation a,b,c,d)
-      #  * 2 for cart & pole
-      #  * 2 for current / last time step
-      # ( don't worry about correct bounds, we won't be sampling from
-      # these & just out of bounds obs just causes stdout "warning" noise )
-      float_max = np.finfo(np.float32).max
-      bound = np.array([float_max] * 7 * 2 * 2)
-      self.observation_space = gym.spaces.Box(-bound, bound)
+      # in the low dimensional case obs space for problem is (R, 2, 7)
+      #  R = number of repeats
+      #  2 = two items; cart & pole
+      #  7d tuple for pos + orientation pose
+      state_shape = (self.repeats, 2, 7)
+    float_max = np.finfo(np.float32).max
+    self.observation_space = gym.spaces.Box(-float_max, float_max, state_shape)
 
+    # no state until reset.
+    self.state = np.empty(state_shape, dtype=np.float32)
+
+    # setup bullet
     p.connect(p.GUI if self.gui else p.DIRECT)
     p.setGravity(0, 0, -9.81)
     p.loadURDF("models/ground.urdf", 0,0,0, 0,0,0,1)
@@ -134,8 +133,8 @@ class BulletCartpole(gym.Env):
 
   def _step(self, action):
     if self.done:
-      print "calling step after done????"
-      return self.observation_state(), 0, True, {}
+      print >>sys.stderr, "calling step after done????"
+      return np.copy(self.state), 0, True, {}
 
     info = {}
 
@@ -157,24 +156,28 @@ class BulletCartpole(gym.Env):
     else:
       fx, fy = action[0] * self.action_force
 
-    # step simulation forward a bit.
-    for _ in xrange(self.sim_step_rate):
-      p.stepSimulation()
-      p.applyExternalForce(self.cart, -1, (fx,fy,0), (0,0,0), p.WORLD_FRAME)
-      if self.delay > 0:
-        time.sleep(self.delay)
+    # step simulation forward. at the end of each repeat we set part of the step's
+    # state by capture the cart & pole state in some form.
+    for r in xrange(self.repeats):
+      for _ in xrange(5):
+        # step forward 5 times; x5 with x2 repeats corresponds to x10 per step
+        p.stepSimulation()
+        p.applyExternalForce(self.cart, -1, (fx,fy,0), (0,0,0), p.WORLD_FRAME)
+        if self.delay > 0:
+          time.sleep(self.delay)
+      self.set_state_element_for_repeat(r)
+
     self.steps += 1
 
     # calculate reward.
-    reward = None
-    if self.discrete_actions:
-      reward = 1.0
-    else:
-      # base reward of 1.0 but linear ramp up to 5.0 if you don't apply much force.
-      max_abs_force = self.action_force * 2
-      abs_force = abs(fx) + abs(fy)
-      reward = 1.0 + 4.0 - (4.0 * abs_force / max_abs_force)
-      assert reward >= 0  # TODO REMOVE
+    reward = 1.0
+#    if self.discrete_actions:
+#      reward = 1.0
+#    else:
+#      # base reward of 1.0 but linear ramp up to 5.0 if you don't apply much force.
+#      max_abs_force = self.action_force * 2
+#      abs_force = abs(fx) + abs(fy)
+#      reward = 1.0 + 4.0 - (4.0 * abs_force / max_abs_force)
 
     # Check for out of bounds by position or orientation on pole.
     # we (re)fetch pose explicitly rather than depending on fields in state.
@@ -193,31 +196,41 @@ class BulletCartpole(gym.Env):
       info['done_reason'] = 'episode length'
       self.done = True
 
-    # log this event
+    # log this event.
+    # TODO in the --use-raw-pixels case would be nice to have poses in state repeats too.
     if self.event_log:
-      print "TODO!" # need to always call state_fields_of_pose_of pole & cart
-      # and pass instead of self.current_state furthermore move this to BELOW
-      # update current state in case we can use that cached value
-#      self.event_log.add(self.current_state, self.done, action, reward,
-#                         render_rgb(self.render_width, self.render_height))
+      self.event_log.add(self.state, self.use_raw_pixels, self.done, action, reward)
 
-    # update state and return observation
-    self.update_current_state()
-    return self.observation_state(), reward, self.done, info
+    # return observation
+    return np.copy(self.state), reward, self.done, info
 
-  def pole_and_cart_state(self):
-    if self.state_as_raw_pixels:
-      return render_rgb(self.render_width, self.render_height)
+  def render_rgb(self):
+    cameraPos = (0.5, 0.5, 0.5)
+    targetPos = (0, 0, 0.2)
+    cameraUp = (0, 0, 1)
+    nearVal, farVal = 1, 20
+    fov = 60
+    _w, _h, rgba, _depth, _objects = p.renderImage(self.render_width, self.render_height,
+                                                   cameraPos, targetPos, cameraUp,
+                                                   nearVal, farVal, fov)
+    # convert from 1d array of 1 -> 255 to np array 0.0 -> 1.0
+    rgba_img = np.reshape(np.asarray(rgba, dtype=np.float32),
+                          (self.render_height, self.render_width, 4))
+    rgb_img = rgba_img[:,:,:3]  # slice off alpha, always 1.0
+    rgb_img /= 255
+    return rgb_img
+
+  def set_state_element_for_repeat(self, repeat):
+    if self.use_raw_pixels:
+      # render gives (50,50,3)
+      # for repeat 0 set this into state at first 3 channels; [50,50,0:3]
+      # for repeat 1 set this into state at second 3 channels; [50,50,3:6] etc
+      self.state[:,:,3*repeat:3*(repeat+1)] = self.render_rgb()
     else:
-      return np.concatenate([state_fields_of_pose_of(self.pole),
-                             state_fields_of_pose_of(self.cart)])
-
-  def update_current_state(self):
-    self.last_state = self.current_state
-    self.current_state = self.pole_and_cart_state()
-
-  def observation_state(self):
-    return np.concatenate([self.current_state, self.last_state])
+      # in low dim case state is (R, 2, 7)
+      # R -> repeat, 2 -> 2 objects (cart & pole), 7 -> 7d pose
+      self.state[repeat][0] = state_fields_of_pose_of(self.cart)
+      self.state[repeat][1] = state_fields_of_pose_of(self.pole)
 
   def _reset(self):
     # reset state
@@ -242,9 +255,7 @@ class BulletCartpole(gym.Env):
       if self.delay > 0:
         time.sleep(self.delay)
 
-    # bootstrap last / current state
-    self.last_state = self.pole_and_cart_state()
-    self.current_state = self.last_state
-    return self.observation_state()
-
-
+    # bootstrap state by running for all repeats
+    for i in xrange(self.repeats):
+      self.set_state_element_for_repeat(i)
+    return np.copy(self.state)
