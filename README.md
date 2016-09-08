@@ -17,8 +17,8 @@ observation state in the low dimensional case is shaped (2, 2, 7)
 * axis 2 contains the object's 7d pose (3d position + 4d quaternion orientation)
 
 observation state in the high dimensional case is shaped (50, 50, 6) where
-* [:,:,0:3] is a 50x50 pixel RGB rendering of the scene at action repeat step 5 (eg below)
-* [:,:,3:6] is a 50x50 pixel RGB rendering of the scene at action repeat step 10
+* `state[:,:,0:3]` is a 50x50 pixel RGB rendering of the scene at action repeat step 5 (see eg just below)
+* `state[:,:,3:6]` is a 50x50 pixel RGB rendering of the scene at action repeat step 10
 
 ![eg_render](eg_render.png)
 
