@@ -365,8 +365,8 @@ class DeepDeterministicPolicyGradientAgent(object):
       # run an episode
       state_1 = self.env.reset()
       done = False
-      # about 1% of the time we record verbose info for entire episode about loss etc
-      debug = np.random.random() < 0.01
+      # 1% of the time we record verbose info for entire episode about loss etc
+      debug = (episode_num % 100) == 0
       while not done:
         # choose action
         action = self.actor.action_given([state_1], add_noise=True)
@@ -440,7 +440,6 @@ class DeepDeterministicPolicyGradientAgent(object):
         total_reward += reward
         steps += 1
       print "EVAL", i, steps, total_reward
-    self.env.reset()  # just to flush logging, clumsy :/
 
   def debug_dump_network_weights(self):
     for var in tf.all_variables():
@@ -474,5 +473,6 @@ def main():
       if saver_util is not None:
         saver_util.force_save()
 
+    self.env.reset()  # just to flush logging, clumsy :/
 if __name__ == "__main__":
   main()

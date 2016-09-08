@@ -92,8 +92,10 @@ if __name__ == "__main__":
   if opts.img_output_dir is not None:
     make_dir(opts.img_output_dir)
 
+  total_num_events = 0
   elr = EventLogReader(opts.log_file)
   for episode_id, episode in enumerate(elr.entries()):
+    total_num_events += len(episode.event)
     if opts.echo:
       print "-----", episode_id
       print episode
@@ -108,7 +110,7 @@ if __name__ == "__main__":
             f.write(state.render.png_bytes)
     if opts.max_process is not None and e_id+1 >= opts.max_process:
       break
-  print >>sys.stderr, "read", episode_id+1, "episodes"
+  print >>sys.stderr, "read", episode_id+1, "episodes for a total of", total_num_events, "events"
 
 
 

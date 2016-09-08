@@ -14,15 +14,13 @@ this repo contains a [gym env](https://gym.openai.com/) for this cartpole as wel
 observation state in the low dimensional case is shaped (2, 2, 7)
 * axis 0 is a time step. each `env.step` action is repeated in simulation 10 times and `state[0,:,:]` is pose information after step 5 and `state[1,:,:]` is pose information after step 10. the delta between these two can be used to derive velocity.
 * axis 1 represents the object. `state[:,0,:]` is the cart, `state[:,1,:]` is the pole.
-# axis 2 contains the object's 7d pose (3d position + 4d quaternion orientation)
+* axis 2 contains the object's 7d pose (3d position + 4d quaternion orientation)
 
 observation state in the high dimensional case is shaped (50, 50, 6) where
 * [:,:,0:3] is a 50x50 pixel RGB rendering of the scene at action repeat step 5 (eg below)
 * [:,:,3:6] is a 50x50 pixel RGB rendering of the scene at action repeat step 10
 
 ![eg_render](eg_render.png)
-
-( testing the high dimensional case now, see the `pixels` branch )
 
 in general see [the blog post](http://matpalm.com/blog/cartpole_plus_plus/) for more info...
 
@@ -194,3 +192,5 @@ eg_renders/e_00000/s_00001.png
 eg_renders/e_00009/s_00018.png
 eg_renders/e_00009/s_00019.png
 ```
+
+1000 events in an event_log is roughly 750K for the high dim case and 100K for low dim
