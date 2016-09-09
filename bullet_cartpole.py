@@ -17,6 +17,7 @@ def add_opts(parser):
                       help="magnitude of action force applied per step")
   parser.add_argument('--initial-force', type=float, default=55.0,
                       help="magnitude of initial push, in random direction")
+  parser.add_argument('--no-random-theta', action='store_true')
   parser.add_argument('--event-log', type=str, default=None,
                       help="path to record event log.")
   parser.add_argument('--max-episode-len', type=int, default=200,
@@ -36,7 +37,7 @@ class BulletCartpole(gym.Env):
    'video.frames_per_second' : 50
   }
 
-  def __init__(self, opts, discrete_actions, random_theta=True, repeats=2):
+  def __init__(self, opts, discrete_actions, repeats=2):
     self.gui = opts.gui
     self.delay = opts.delay if self.gui else 0.0
 
@@ -66,7 +67,7 @@ class BulletCartpole(gym.Env):
 
     # whether we do initial push in a random direction
     # if false we always push with along x-axis (simplee problem, useful for debugging)
-    self.random_theta = random_theta
+    self.random_theta = not opts.no_random_theta
 
     # true if action space is discrete; 5 values; no push, left, right, up & down
     # false if action space is continuous; fx, fy both (-action_force, action_force)
