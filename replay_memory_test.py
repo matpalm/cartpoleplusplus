@@ -115,8 +115,8 @@ class TestReplayMemory(unittest.TestCase):
     self.assertEquals(sorted(set(idxs)), [0,1,2])
     # fetch a batch, of all items
     batch = self.rm.batch(idxs=[0,1,2])
-    self.assert_np_eq(batch.reward, [88, 68, 78])
-    self.assert_np_eq(batch.terminal_mask, [0, 1, 1])
+    self.assert_np_eq(batch.reward, [[88], [68], [78]])
+    self.assert_np_eq(batch.terminal_mask, [[0], [1], [1]])
 
   def __test_soak(self):
     rm = ReplayMemory(self.sess, buffer_size=100, state_shape=(2, 3), action_dim=2, load_factor=1.5)

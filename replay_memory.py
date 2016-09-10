@@ -113,8 +113,6 @@ class ReplayMemory(object):
       self.insert = 0
       self.full = True
 
-#    self.dump()
-
     # return s2 ptr
     return s2_idx
 
