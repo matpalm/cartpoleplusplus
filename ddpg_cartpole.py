@@ -401,6 +401,7 @@ class DeepDeterministicPolicyGradientAgent(object):
       state_1_idx = self.replay_memory.cache_state(state_1)
       # 1% of the time we record verbose info for entire episode about loss etc
       debug = VERBOSE_DEBUG or (episode_num % 10) == 0
+
       done = False
       while not done:
         # choose action
@@ -485,9 +486,9 @@ class DeepDeterministicPolicyGradientAgent(object):
 
   def debug_dump_network_weights(self):
     with open("/tmp/weights", "a") as f:
+      f.write("DUMP time %s\n" % time.time())
       for var in tf.all_variables():
-        f.write("time %s\n" % time.time())
-        f.write("\n%s %s\n" % (var.name, var.get_shape()))
+        f.write("VAR %s %s\n" % (var.name, var.get_shape()))
         f.write("%s\n" % var.eval())
     print "weights appended to /tmp/weights"
 
