@@ -6,6 +6,7 @@ import gym
 import json
 import numpy as np
 import replay_memory
+import signal
 import sys
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
@@ -39,6 +40,7 @@ parser.add_argument('--critic-gradient-clip', type=float, default=None, help="cl
 parser.add_argument('--actor-activation-init-magnitude', type=float, default=0.001,
                     help="weight magnitude for actor final activation. explicitly near zero to force near zero predictions initially")
 parser.add_argument('--replay-memory-size', type=int, default=50000, help="max size of replay memory")
+parser.add_argument('--replay-memory-burn-in', type=int, default=1000, help="dont train from replay memory until it reaches this size")
 parser.add_argument('--eval-action-noise', action='store_true', help="whether to use noise during eval")
 parser.add_argument('--action-noise-theta', type=float, default=0.01,
                     help="OrnsteinUhlenbeckNoise theta (rate of change) param for action exploration")
@@ -49,6 +51,18 @@ opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
 sys.stderr.write("first training at epoch %s\n" % (opts.batch_size * \
                                                    opts.batches_per_step * 10))
+
+VERBOSE_DEBUG = False
+def toggle_verbose_debug(signal, frame):
+  global VERBOSE_DEBUG
+  VERBOSE_DEBUG = not VERBOSE_DEBUG
+signal.signal(signal.SIGUSR1, toggle_verbose_debug)
+
+DUMP_WEIGHTS = False
+def set_dump_weights(signal, frame):
+  global DUMP_WEIGHTS
+  DUMP_WEIGHTS = True
+signal.signal(signal.SIGUSR2, set_dump_weights)
 
 class Network(object):
   """Common class for actor/critic handling ops for making / updating target networks."""
@@ -366,7 +380,7 @@ class DeepDeterministicPolicyGradientAgent(object):
       state_1 = self.env.reset()
       done = False
       # 1% of the time we record verbose info for entire episode about loss etc
-      debug = (episode_num % 100) == 0
+      debug = VERBOSE_DEBUG or (episode_num % 10) == 0
       while not done:
         # choose action
         action = self.actor.action_given([state_1], add_noise=True)
@@ -374,12 +388,13 @@ class DeepDeterministicPolicyGradientAgent(object):
         state_2, reward, done, _ = self.env.step(action)
 
         if debug:
-          print "-----"
-          print "state_1", state_1
-          print "action", action
-          print "reward", reward
-          print "done", done
-          print "state_2", state_2
+          if VERBOSE_DEBUG:
+            print "-----"
+            print "state_1", state_1
+            print "action", action
+            print "reward", reward
+            print "done", done
+            print "state_2", state_2
           expected_q = float(self.critic.debug_q_value_for([state_1])[0][0])
           expected_target_q = float(self.target_critic.debug_q_value_for([state_1])[0][0])
           print "EXPECTED_Q_VALUES", expected_q, expected_target_q
@@ -387,7 +402,7 @@ class DeepDeterministicPolicyGradientAgent(object):
         # add to replay memory
         self.replay_memory.add(state_1, action, reward, done, state_2)
         # do a training step (after waiting for buffer to fill a bit...)
-        if self.replay_memory.size() > batch_size * batches_per_step * 10:
+        if self.replay_memory.size() > opts.replay_memory_burn_in:
           for _ in xrange(batches_per_step):
             state_1_b, action_b, reward_b, terminal_mask_b, state_2_b = \
                               self.replay_memory.random_batch(batch_size)
@@ -412,11 +427,15 @@ class DeepDeterministicPolicyGradientAgent(object):
       if saver_util is not None:
         saver_util.save_if_required()
 
-      # hack in occasional eval and dumping of weights
-      if episode_num % 100 == 0:
+      # emit occasional eval
+      if VERBOSE_DEBUG or episode_num % 10 == 0:
         self.run_eval(1)
-#      if episode_num % 10000 == 0:
-#        self.debug_dump_network_weights()
+
+      # dump weights once if requested
+      global DUMP_WEIGHTS
+      if DUMP_WEIGHTS:
+        self.debug_dump_network_weights()
+        DUMP_WEIGHTS = False
 
       # exit when finished
       num_actions_taken += len(rewards)
@@ -442,9 +461,12 @@ class DeepDeterministicPolicyGradientAgent(object):
       print "EVAL", i, steps, total_reward
 
   def debug_dump_network_weights(self):
-    for var in tf.all_variables():
-      print "----------------", var.name, var.get_shape()
-#      print var.eval()
+    with open("/tmp/weights", "a") as f:
+      f.write("DUMP time %s\n" % time.time())
+      for var in tf.all_variables():
+        f.write("VAR %s %s\n" % (var.name, var.get_shape()))
+        f.write("%s\n" % var.eval())
+    print "weights appended to /tmp/weights"
 
 def main():
   env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=False)
