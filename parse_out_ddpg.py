@@ -13,13 +13,13 @@ f_eval = open("/tmp/eval", "w")
 f_eval.write("episode steps total_reward\n")
 #f_batch_num_terminal = open("/tmp/batch_num_terminal", "w")
 #f_batch_num_terminal.write("time batch_num_terminals\n")
-#f_gradient_l2_norms = open("/tmp/gradient_l2_norms", "w")
-#f_gradient_l2_norms.write("time source l2_norm\n")
+f_gradient_l2_norms = open("/tmp/gradient_l2_norms", "w")
+f_gradient_l2_norms.write("time source l2_norm\n")
 f_q_loss = open("/tmp/q_loss", "w")
 f_q_loss.write("episode q_loss\n")
 
 freq = Counter()
-emit_freq = {"EVAL": 1, "ACTOR_L2_NORM": 20, "CRITIC_L2_NORM": 20, 
+emit_freq = {"EVAL": 1, "ACTOR_L2_NORM": 1, "CRITIC_L2_NORM": 20, 
              "Q LOSS": 1, "EXPECTED_Q_VALUES": 1}
 def should_emit(tag):
   freq[tag] += 1
@@ -47,16 +47,16 @@ for line in sys.stdin:
       # interleaving output :/
       n_parse_errors += 1
 
-  if episode is None:
+  if "actor gradient" in line and should_emit("ACTOR_L2_NORM"):
+    m = re.match(".*actor gradient (.*) l2_norm pre \[(.*?)\]", line)
+    var_id, norm = m.groups()
+    f_gradient_l2_norms.write("%s actor_%s %s\n" % (freq["ACTOR_L2_NORM"], var_id, norm))
     continue
 
-#  elif "actor gradient l2_norm" in line and should_emit("ACTOR_L2_NORM"):
-#    norm = re.sub(".*\[", "", line).replace("]", "")
-#    f_gradient_l2_norms.write("%s actor %s\n" % (time, norm))
-
-#  elif "critic gradient l2_norm" in line and should_emit("CRITIC_L2_NORM"):
-#    norm = re.sub(".*\[", "", line).replace("]", "")
-#    f_gradient_l2_norms.write("%s critic %s\n" % (time, norm))
+  if "critic gradient l2_norm" in line and should_emit("CRITIC_L2_NORM"):
+    norm = re.sub(".*\[", "", line).replace("]", "")
+    f_gradient_l2_norms.write("%s critic %s\n" % (freq["CRITIC_L2_NORM"], norm))
+    continue
 
 #  elif line.startswith("ACTIONS") and should_emit("ACTIONS"):
 #    m = re.match("ACTIONS\t\[(.*), (.*)\]\t\[(.*), (.*)\]", line)
@@ -64,6 +64,16 @@ for line in sys.stdin:
 #      pre_x, pre_y, post_x, post_y = m.groups()
 #      f_actions.write("%s pre %s %s\n" % (time, pre_x, pre_y))
 #      f_actions.write("%s post %s %s\n" % (time, post_x, post_y))
+
+  if "temporal_difference_loss" in line and should_emit("Q LOSS"):
+    m = re.match(".*temporal_difference_loss\[(.*?)\]", line)
+    tdl, = m.groups()
+    f_q_loss.write("%s %s\n" % (freq["Q LOSS"], tdl))
+    continue
+
+  # everything else requires episode for keying
+  if episode is None:
+    continue
 
   elif line.startswith("EXPECTED_Q_VALUES") and should_emit("EXPECTED_Q_VALUES"):
     cols = line.split(" ")
@@ -96,12 +106,6 @@ for line in sys.stdin:
 #    assert cols[0] == "NUM_TERMINALS_IN_BATCH"
 #    f_batch_num_terminal.write("%s %f\n" % (episode, float(cols[1])))
 
-  elif line.startswith("Q LOSS") and should_emit("Q LOSS"):
-    cols = line.split(" ")
-    assert len(cols) == 3
-    assert cols[0] == "Q"
-    assert cols[1] == "LOSS"   # o_O
-    f_q_loss.write("%s %f\n" % (episode, float(cols[2])))
 
 print "n_parse_errors", n_parse_errors
 print freq

@@ -43,13 +43,12 @@ dev.off()
 # ggplot(df, aes(episode, batch_num_terminals)) + geom_point(alpha=0.2) + geom_smooth() + labs(# title="batch num terminal")
 # dev.off()
 
-# df = read.delim("/tmp/gradient_l2_norms", h=T, sep=" ")
-# png("/tmp/plots/09a_actor_l2_norms.png", width=640, height=320)
-# ggplot(df[df$source=="actor",], aes(episode, l2_norm)) + geom_point(alpha=0.1) + geom_smooth() + labs(title="actor gradient l2 norms")
-# dev.off()
-# png("/tmp/plots/09b_critic_l2_norms.png", width=640, height=320)
-# ggplot(df[df$source=="critic",], aes(episode, l2_norm)) + geom_point(alpha=0.1) + geom_smooth() + labs(title="critic gradient l2 norms")
-# dev.off()
+df = read.delim("/tmp/gradient_l2_norms", sep=" ")
+png("/tmp/plots/09_gradient_l2_norms.png", width=640, height=320)
+ggplot(df, aes(time, l2_norm)) + 
+  geom_point(alpha=0.1, aes(color=source)) +
+  geom_smooth(aes(color=source))
+dev.off()
 
 df = read.delim("/tmp/q_loss", h=T, sep=" ")
 png("/tmp/plots/10_q_loss.png", width=640, height=320)

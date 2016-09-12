@@ -160,5 +160,3 @@ class ReplayMemory(object):
     current_stats = dict(self.stats)
     current_stats["free_slots"] = len(self.state_free_slots)
     return current_stats
-
-
