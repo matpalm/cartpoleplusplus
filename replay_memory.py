@@ -1,5 +1,8 @@
+import collections
 import numpy as np
 import sys
+
+Batch = collections.namedtuple("Batch", "state_1 action reward terminal_mask state_2")
 
 class RingBuffer(object):
   def __init__(self, buffer_size, shape):
@@ -74,9 +77,9 @@ class ReplayMemory(object):
 
   def random_batch(self, batch_size):
     idxs = self.state_1.random_indexes(batch_size)
-    return (self.state_1.memory[idxs],
-            self.action.memory[idxs],
-            self.reward.memory[idxs],
-            self.terminal_mask.memory[idxs],
-            self.state_2.memory[idxs])
+    return Batch(self.state_1.memory[idxs],
+                 self.action.memory[idxs],
+                 self.reward.memory[idxs],
+                 self.terminal_mask.memory[idxs],
+                 self.state_2.memory[idxs])
 

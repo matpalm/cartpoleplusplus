@@ -79,38 +79,62 @@ def make_dir(d):
     os.makedirs(d)
 
 if __name__ == "__main__":
-  import argparse, os, sys
+  import argparse, os, sys, Image, ImageDraw
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument('--log-file', type=str, default=None)
   parser.add_argument('--echo', action='store_true', help="write event to stdout")
   parser.add_argument('--max-process', type=int, help="if set only process this many")
+  parser.add_argument('--episodes', type=str, default=None,
+                      help="if set only process these specific episodes (comma separated list)")
   parser.add_argument('--img-output-dir', type=str, default=None,
                       help="if set output all renders to this DIR/e_NUM/s_NUM.png")
   # TODO args for episode range
   opts = parser.parse_args()
 
+  episode_whitelist = None
+  if opts.episodes is not None:
+    episode_whitelist = set(map(int, opts.episodes.split(",")))
+
   if opts.img_output_dir is not None:
     make_dir(opts.img_output_dir)
 
-  total_num_events = 0
+  total_num_read_episodes = 0
+  total_num_read_events = 0
+
   elr = EventLogReader(opts.log_file)
-  for episode_id, episode in enumerate(elr.entries()):
-    total_num_events += len(episode.event)
+  for episode_id, episode in enumerate(elr.entries()):   
+    if episode_whitelist is not None and episode_id not in episode_whitelist:
+      continue
     if opts.echo:
       print "-----", episode_id
       print episode
+    total_num_read_episodes + 1
+    total_num_read_events += len(episode.event)
     if opts.img_output_dir is not None:
       dir = "%s/ep_%05d" % (opts.img_output_dir, episode_id)
       make_dir(dir)
       for event_id, event in enumerate(episode.event):
+        print event
         for state_id, state in enumerate(event.state):
-          assert state.render.png_bytes
+          # open RGB png in an image canvas
+          img = Image.open(StringIO.StringIO(state.render.png_bytes))
+          canvas = ImageDraw.Draw(img)
+          # draw episode and event number in top left
+          canvas.text((0, 0), "%d %d" % (episode_id, event_id), fill="black")
+          # draw simple fx/fy representation in bottom right...
+          # a bounding box
+          bx, by, bw = 40, 40, 10
+          canvas.line((bx-bw,by-bw, bx+bw,by-bw, bx+bw,by+bw, bx-bw,by+bw, bx-bw,by-bw), fill="black")
+          # then a simple fx/fy line
+          fx, fy = event.action[0], event.action[1]
+          canvas.line((bx,by, bx+(fx*bw), by+(fy*bw)), fill="black")
+          # write it out
+#          img = img.resize((200, 200))
           filename = "%s/ev_%05d_r%d.png" % (dir, event_id, state_id)
-          with open(filename, "w") as f:
-            f.write(state.render.png_bytes)
+          img.save(filename)
     if opts.max_process is not None and e_id+1 >= opts.max_process:
       break
-  print >>sys.stderr, "read", episode_id+1, "episodes for a total of", total_num_events, "events"
+  print >>sys.stderr, "read", total_num_read_episodes, "episodes for a total of", total_num_read_events, "events"
 
 
 
