@@ -7,9 +7,10 @@ simulated using [bullet physics](http://bulletphysics.org/) where the pole _isn'
 
 this repo contains a [gym env](https://gym.openai.com/) for this cartpole as well as example policies trained with ...
 
-* a [deep q network](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf) from [keras-rl](https://github.com/matthiasplappert/keras-rl)
 * a hand rolled likelihood ratio policy gradient method ( [lrpg_cartpole.py](lrpg_cartpole.py) ) for the discrete control version
 * a hand rolled [deep deterministic policy gradient method](http://arxiv.org/abs/1509.02971) ( [ddpg_cartpole.py](ddpg_cartpole.py) ) for the continuous control version
+
+we also train a [deep q network](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf) from [keras-rl](https://github.com/matthiasplappert/keras-rl) as an externally implemented baseline.
 
 there are two state representations available; a low dimensional one based on the cart & pole pose and a high dimensional one based on raw pixels.
 
