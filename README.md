@@ -11,14 +11,20 @@ this repo contains a [gym env](https://gym.openai.com/) for this cartpole as wel
 * a hand rolled likelihood ratio policy gradient method ( [lrpg_cartpole.py](lrpg_cartpole.py) ) for the discrete control version
 * a hand rolled [deep deterministic policy gradient method](http://arxiv.org/abs/1509.02971) ( [ddpg_cartpole.py](ddpg_cartpole.py) ) for the continuous control version
 
-observation state in the low dimensional case is shaped (2, 2, 7)
-* axis 0 is a time step. each `env.step` action is repeated in simulation 10 times and `state[0,:,:]` is pose information after step 5 and `state[1,:,:]` is pose information after step 10. the delta between these two can be used to derive velocity.
-* axis 1 represents the object. `state[:,0,:]` is the cart, `state[:,1,:]` is the pole.
-* axis 2 contains the object's 7d pose (3d position + 4d quaternion orientation)
+there are two state representations available; a low dimensional one based on the cart & pole pose and a high dimensional one based on raw pixels.
 
-observation state in the high dimensional case is shaped (50, 50, 6) where
-* `state[:,:,0:3]` is a 50x50 pixel RGB rendering of the scene at action repeat step 5 (see eg just below)
-* `state[:,:,3:6]` is a 50x50 pixel RGB rendering of the scene at action repeat step 10
+in both representations we use the idea of action repeats; per env.step we apply the choosen action 5 times, take a state snapshot, apply the action another 5 times and take another snapshot. the delta between these two snapshots provides enough information to infer velocity (if the learning algorithm finds that useful to do )
+
+observation state in the low dimensional case is shaped `(2, 2, 7)`
+* axis=0 represents the two snapshots; 0=first, 1=second
+* axis=1 represents the object; 0=cart, 1=pole
+* axis=2 is the 7d pose; 3d postition + 4d quaternion orientation
+* this representation is usually just flattened to (28,) when used
+
+the high dimensional state is `(50, 50, 6)`
+* `[:,:,0:3]` (the first three channels) is the RGB of a 50x50 render at first snapshot
+* `[:,:,3:6]` (the second three channels) is the RGB of a 50x50 render at the second snapshot
+* TODO: i concatted in the channel axis for ease of use with conv2d but conv3d is available and i should switch...
 
 ![eg_render](eg_render.png)
 
