@@ -76,11 +76,11 @@ class Network(object):
     """create an op that does updates all vars in source_namespace to target_namespace"""
     assert affine_combo_coeff >= 0.0 and affine_combo_coeff <= 1.0
     assign_ops = []
-    with tf.variable_scope("", reuse=True):  # for grabbing the targets by full namespace
+    with tf.variable_scope(self.namespace, reuse=True):
       for src_var in tf.all_variables():
         if not src_var.name.startswith(source_namespace):
           continue
-        target_var_name = src_var.name.replace(source_namespace, self.namespace).replace(":0", "")
+        target_var_name = src_var.name.replace(source_namespace+"/", "").replace(":0", "")
         target_var = tf.get_variable(target_var_name)
         assert src_var.get_shape() == target_var.get_shape()
         assign_ops.append(target_var.assign_sub(affine_combo_coeff * (target_var - src_var)))
