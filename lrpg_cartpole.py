@@ -14,7 +14,6 @@ from tensorflow.python.ops import init_ops
 import time
 import util
 
-
 np.set_printoptions(precision=5, threshold=10000, suppress=True, linewidth=10000)
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -29,6 +28,11 @@ parser.add_argument('--max-run-time', type=int, default=0,
                          " ignore if <=0")
 parser.add_argument('--target-update-rate', type=float, default=0.0001,
                     help="REFACTORING WIP")
+parser.add_argument('--target-update-rate', type=float, default=0.0001,
+                    help="REFACTORING WIP")
+parser.add_argument('--num-train-batches', type=int, default=10,
+                    help="number of training batches to run")
+>>>>>>> 24b081676bcd1ed82a05b62c905a112d2cf403b0
 parser.add_argument('--rollouts-per-batch', type=int, default=10,
                     help="number of rollouts to run for each training batch")
 parser.add_argument('--ckpt-dir', type=str, default=None,
@@ -244,6 +248,7 @@ class LikelihoodRatioPolicyGradientAgent(object):
         f.write("VAR %s %s\n" % (var.name, var.get_shape()))
         f.write("%s\n" % var.eval())
     print "weights written to", fn
+
 
 def main():
   env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=True)

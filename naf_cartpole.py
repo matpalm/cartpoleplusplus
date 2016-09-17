@@ -383,6 +383,7 @@ class NormalizedAdvantageFunctionAgent(object):
         f.write("%s\n" % var.eval())
     print "weights written to", fn
 
+
 def main():
   env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=False)
 
