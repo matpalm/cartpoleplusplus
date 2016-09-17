@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import argparse
 import bullet_cartpole
+import collections
 import datetime
 import gym
 import json
@@ -50,8 +51,6 @@ parser.add_argument('--action-noise-sigma', type=float, default=0.2,
 bullet_cartpole.add_opts(parser)
 opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
-sys.stderr.write("first training at epoch %s\n" % (opts.batch_size * \
-                                                   opts.batches_per_step * 10))
 
 VERBOSE_DEBUG = False
 def toggle_verbose_debug(signal, frame):
@@ -371,16 +370,13 @@ class DeepDeterministicPolicyGradientAgent(object):
 
   def run_training(self, max_num_actions, max_run_time, batch_size, batches_per_step,
                    saver_util):
-
     # log start time, in case we are limiting by time...
     start_time = time.time()
 
     # run for some max number of actions
     num_actions_taken = 0
-    episode_num = 0
-    while True:
-      # some stats collection
-      stats = {"time": int(time.time()), "episode": episode_num}
+    n = 0
+    while True:      
       rewards = []
       # run an episode
       state_1 = self.env.reset()
@@ -418,20 +414,25 @@ class DeepDeterministicPolicyGradientAgent(object):
         # roll state for next step.
         state_1 = state_2
         rewards.append(reward)
+      num_actions_taken += len(rewards)      
 
       # dump some stats and progress info
+      stats = collections.OrderedDict()
+      stats["time"] = time.time()
+      stats["n"] = n
       stats["total_reward"] = np.sum(rewards)
       stats["episode_len"] = len(rewards)
       stats["replay_memory_size"] = self.replay_memory.size()
       print "STATS %s\t%s" % (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                               json.dumps(stats))
+      n += 1
 
       # save if required
       if saver_util is not None:
         saver_util.save_if_required()
 
       # emit occasional eval
-      if VERBOSE_DEBUG or episode_num % 10 == 0:
+      if VERBOSE_DEBUG or n % 100 == 0:
         self.run_eval(1)
 
       # dump weights once if requested
@@ -441,12 +442,11 @@ class DeepDeterministicPolicyGradientAgent(object):
         DUMP_WEIGHTS = False
 
       # exit when finished
-      num_actions_taken += len(rewards)
       if max_num_actions > 0 and num_actions_taken > max_num_actions:
         break
       if max_run_time > 0 and time.time() > start_time + max_run_time:
         break
-      episode_num += 1
+
 
   def run_eval(self, num_episodes, add_noise=False):
     """ run num_episodes of eval and output episode length and rewards """
@@ -475,7 +475,8 @@ class DeepDeterministicPolicyGradientAgent(object):
 def main():
   env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=False)
 
-  with tf.Session() as sess:  #config=tf.ConfigProto(log_device_placement=True)) as sess:
+#  with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess:
+  with tf.Session() as sess:
     agent = DeepDeterministicPolicyGradientAgent(env=env, agent_opts=opts)
 
     # setup saver util and either load latest ckpt, or init if none...
