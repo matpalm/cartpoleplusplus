@@ -50,8 +50,6 @@ parser.add_argument('--action-noise-sigma', type=float, default=0.2,
 bullet_cartpole.add_opts(parser)
 opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
-sys.stderr.write("first training at epoch %s\n" % (opts.batch_size * \
-                                                   opts.batches_per_step * 10))
 
 VERBOSE_DEBUG = False
 def toggle_verbose_debug(signal, frame):
@@ -475,7 +473,8 @@ class DeepDeterministicPolicyGradientAgent(object):
 def main():
   env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=False)
 
-  with tf.Session() as sess:  #config=tf.ConfigProto(log_device_placement=True)) as sess:
+#  with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess:
+  with tf.Session() as sess:
     agent = DeepDeterministicPolicyGradientAgent(env=env, agent_opts=opts)
 
     # setup saver util and either load latest ckpt, or init if none...

@@ -5,6 +5,7 @@ import datetime
 import gym
 import json
 import numpy as np
+import signal
 import sys
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
@@ -13,12 +14,14 @@ import time
 import util
 import collections
 
-np.set_printoptions(precision=3, threshold=10000, suppress=True, linewidth=10000)
+np.set_printoptions(precision=5, threshold=10000, suppress=True, linewidth=10000)
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--num-hidden', type=int, default=32)
 parser.add_argument('--num-eval', type=int, default=0,
                     help="if >0 just run this many episodes with no training")
+parser.add_argument('--target-update-rate', type=float, default=0.0001,
+                    help="REFACTORING WIP")
 parser.add_argument('--num-train-batches', type=int, default=10,
                     help="number of training batches to run")
 parser.add_argument('--rollouts-per-batch', type=int, default=10,
@@ -32,7 +35,21 @@ opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
 assert not opts.use_raw_pixels, "TODO: add convnet from ddpg here"
 
+VERBOSE_DEBUG = False
+def toggle_verbose_debug(signal, frame):
+  global VERBOSE_DEBUG
+  VERBOSE_DEBUG = not VERBOSE_DEBUG
+signal.signal(signal.SIGUSR1, toggle_verbose_debug)
+
+DUMP_WEIGHTS = False
+def set_dump_weights(signal, frame):
+  global DUMP_WEIGHTS
+  DUMP_WEIGHTS = True
+signal.signal(signal.SIGUSR2, set_dump_weights)
+
+
 class LikelihoodRatioPolicyGradientAgent(object):
+
   def __init__(self, env, hidden_dim, optimiser, gui=False):
     self.env = env
     self.gui = gui
@@ -185,21 +202,28 @@ class LikelihoodRatioPolicyGradientAgent(object):
       _, _, rewards = self.rollout(sampling=False)
       print sum(rewards)
 
+  def hook_up_target_networks(self, target_update_rate):
+	pass
 
 def main():
   env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=True)
 
+#  with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess:
   with tf.Session() as sess:
     agent = LikelihoodRatioPolicyGradientAgent(env=env, gui=opts.gui,
                                                hidden_dim=opts.num_hidden,
                                                optimiser=tf.train.AdamOptimizer())
 
-    # setup saver util; will load latest ckpt, or init if none...
+    # setup saver util and either load latest ckpt, or init if none...
     saver_util = None
     if opts.ckpt_dir is not None:
       saver_util = util.SaverUtil(sess, opts.ckpt_dir, opts.ckpt_freq)
     else:
       sess.run(tf.initialize_all_variables())
+
+    # now that we've either init'd from scratch, or loaded up a checkpoint,
+    # we can hook together target networks
+    agent.hook_up_target_networks(opts.target_update_rate)
 
     # run either eval or training
     if opts.num_eval > 0:
@@ -209,6 +233,8 @@ def main():
                          saver_util)
       if saver_util is not None:
         saver_util.force_save()
+
+    env.reset()  # just to flush logging, clumsy :/
 
 if __name__ == "__main__":
   main()
