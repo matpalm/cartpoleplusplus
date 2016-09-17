@@ -24,6 +24,10 @@ def add_opts(parser):
                       help="maximum episode len for cartpole")
   parser.add_argument('--use-raw-pixels', action='store_true',
                       help="use raw pixels as state instead of cart/pole poses")
+  parser.add_argument('--render-width', type=int, default=50,
+                      help="if --use-raw-pixels render with this width")
+  parser.add_argument('--render-height', type=int, default=50,
+                      help="if --use-raw-pixels render with this height")
 
 def state_fields_of_pose_of(body_id):
   (x,y,z), (a,b,c,d) = p.getBasePositionAndOrientation(body_id)
@@ -94,9 +98,8 @@ class BulletCartpole(gym.Env):
     self.use_raw_pixels = opts.use_raw_pixels
 
     # in the use_raw_pixels is set we will be rendering
-    # TODO: configuration
-    self.render_width = 50
-    self.render_height = 50
+    self.render_width = opts.render_width
+    self.render_height = opts.render_height
 
     # decide observation space
     if self.use_raw_pixels:
