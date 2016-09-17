@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import argparse
+import base_network
 import bullet_cartpole
 import collections
 import datetime
@@ -28,11 +29,8 @@ parser.add_argument('--max-run-time', type=int, default=0,
                          " ignore if <=0")
 parser.add_argument('--target-update-rate', type=float, default=0.0001,
                     help="REFACTORING WIP")
-parser.add_argument('--target-update-rate', type=float, default=0.0001,
-                    help="REFACTORING WIP")
 parser.add_argument('--num-train-batches', type=int, default=10,
                     help="number of training batches to run")
->>>>>>> 24b081676bcd1ed82a05b62c905a112d2cf403b0
 parser.add_argument('--rollouts-per-batch', type=int, default=10,
                     help="number of rollouts to run for each training batch")
 parser.add_argument('--ckpt-dir', type=str, default=None,
