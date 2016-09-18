@@ -366,7 +366,7 @@ class DeepDeterministicPolicyGradientAgent(object):
         saver_util.save_if_required()
 
       # emit occasional eval
-      if VERBOSE_DEBUG or n % 100 == 0:
+      if VERBOSE_DEBUG or n % 10 == 0:
         self.run_eval(1)
 
       # dump weights once if requested
@@ -392,7 +392,7 @@ class DeepDeterministicPolicyGradientAgent(object):
       while not done:
         action = self.actor.action_given([state], add_noise)
         state, reward, done, _ = self.env.step(action)
-#        print "EVALSTEP r%s %s %s %s" % (i, steps, np.linalg.norm(action), reward)
+        print "EVALSTEP r%s %s %s %s %s" % (i, steps, action, np.linalg.norm(action), reward)
         total_reward += reward
         steps += 1
       print "EVAL", i, steps, total_reward
