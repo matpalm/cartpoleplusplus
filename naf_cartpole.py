@@ -37,7 +37,7 @@ parser.add_argument('--learning-rate', type=float, default=0.001, help="learning
 parser.add_argument('--gradient-clip', type=float, default=5, help="do global clipping to this norm")
 parser.add_argument('--print-gradients', action='store_true', help="whether to verbose print all gradients and l2 norms")
 parser.add_argument('--discount', type=float, default=0.99, help="discount for RHS of bellman equation update")
-parser.add_argument('--replay-memory-size', type=int, default=50000, help="max size of replay memory")
+parser.add_argument('--replay-memory-size', type=int, default=22000, help="max size of replay memory")
 parser.add_argument('--replay-memory-burn-in', type=int, default=1000, help="dont train from replay memory until it reaches this size")
 parser.add_argument('--eval-action-noise', action='store_true', help="whether to use noise during eval")
 parser.add_argument('--action-noise-theta', type=float, default=0.01,
@@ -69,9 +69,14 @@ signal.signal(signal.SIGUSR2, set_dump_weights)
 class ValueNetwork(base_network.Network):
   """ Value network component of a NAF network. Created as seperate net because it has a target network."""
 
-  def __init__(self, namespace, input_state, hidden_layer_config):
+  def __init__(self, namespace, input_state, input_state_idx, hidden_layer_config):
     super(ValueNetwork, self).__init__(namespace)
+
+    # since state is keep in a tf variable we keep track of the variable itself
+    # as well as an indexing placeholder
     self.input_state = input_state
+    self.input_state_idx = input_state_idx
+
     with tf.variable_scope(namespace):
       flat_input_state = slim.flatten(input_state, scope='flat')
       value = self.hidden_layers_starting_at(flat_input_state, hidden_layer_config)
@@ -85,7 +90,8 @@ class ValueNetwork(base_network.Network):
 class NafNetwork(base_network.Network):
 
   def __init__(self, namespace,
-               input_state, input_state_2,
+               input_state, input_state_idx,
+               input_state_2, input_state_2_idx,
                value_net, target_value_net,
                action_dim, opts):
     super(NafNetwork, self).__init__(namespace)
@@ -101,8 +107,12 @@ class NafNetwork(base_network.Network):
     self.target_value_net = target_value_net
 
     # keep placeholders provided and build any others required
+    # use input_state_idx for feeding indexes into replay memory
+    # use input_state for feeding explicit state (e.g. during eval)
     self.input_state = input_state
+    self.input_state_idx = input_state_idx
     self.input_state_2 = input_state_2
+    self.input_state_2_idx = input_state_2_idx
     self.input_action = tf.placeholder(shape=[None, action_dim],
                                        dtype=tf.float32, name="input_action")
     self.reward =  tf.placeholder(shape=[None, 1],
@@ -221,7 +231,7 @@ class NafNetwork(base_network.Network):
     # is never used for any part of computation graph required for online training. it's
     # only used during training after being the replay buffer.
     actions = tf.get_default_session().run(self.output_action,
-                                           feed_dict={self.input_state: state})
+                                           feed_dict={self.input_state: [state]})
     if add_noise:
       actions[0] += self.exploration_noise.sample()
       actions = np.clip(1, -1, actions)  # action output is _always_ (-1, 1)
@@ -229,20 +239,20 @@ class NafNetwork(base_network.Network):
 
   def train(self, batch):
     tf.get_default_session().run([self.check_numerics, self.train_op],
-                                 feed_dict={self.input_state: batch.state_1,
+                                 feed_dict={self.input_state_idx: batch.state_1_idx,
                                             self.input_action: batch.action,
                                             self.reward: batch.reward,
                                             self.terminal_mask: batch.terminal_mask,
-                                            self.input_state_2: batch.state_2})
+                                            self.input_state_2_idx: batch.state_2_idx})
 
   def debug_values(self, batch):
     values = tf.get_default_session().run([self._l_values, self.loss, self.value_net.value,
                                            self.advantage, self.target_value_net.value],
-                                   feed_dict={self.input_state: batch.state_1,
+                                   feed_dict={self.input_state_idx: batch.state_1_idx,
                                               self.input_action: batch.action,
                                               self.reward: batch.reward,
                                               self.terminal_mask: batch.terminal_mask,
-                                              self.input_state_2: batch.state_2})
+                                              self.input_state_2_idx: batch.state_2_idx})
     values = [np.squeeze(v) for v in values]
     return values
 
@@ -255,25 +265,23 @@ class NormalizedAdvantageFunctionAgent(object):
 
     # for now, with single machine synchronous training, use a replay memory for training.
     # TODO: switch back to async training with multiple replicas (as in drivebot project)
-    self.replay_memory = replay_memory.ReplayMemory(agent_opts.replay_memory_size,
+    self.replay_memory = replay_memory.ReplayMemory(tf.get_default_session(),
+                                                    agent_opts.replay_memory_size,
                                                     state_shape, action_dim)
 
     # the same input states are shared by the value nets as well as the naf networks.
     # explicitly define them now.
     batched_state_shape = [None] + list(state_shape)
-    input_state = tf.placeholder(shape=batched_state_shape,
-                                 dtype=tf.float32, name="input_state")
-    input_state_2 = tf.placeholder(shape=batched_state_shape,
-                                   dtype=tf.float32, name="input_state_2")
+    s1, s1_idx, s2, s2_idx = self.replay_memory.batch_ops()
 
     # initialise base models for value & naf networks.
     # value subportion of net is explicitly created seperate because it has a target network
-    self.value_net = ValueNetwork("value", input_state,
+    self.value_net = ValueNetwork("value", s1, s1_idx,
                                   agent_opts.hidden_layers)
-    self.target_value_net = ValueNetwork("target_value", input_state_2,
+    self.target_value_net = ValueNetwork("target_value", s2, s2_idx,
                                          agent_opts.hidden_layers)
     self.naf = NafNetwork("naf",
-                          input_state, input_state_2,
+                          s1, s1_idx, s2, s2_idx,
                           self.value_net, self.target_value_net,
                           action_dim, agent_opts)
 
@@ -294,20 +302,24 @@ class NormalizedAdvantageFunctionAgent(object):
       rewards = []
       # run an episode
       state_1 = self.env.reset()
+      # prepare data for updating replay memory at end of episode
+      initial_state = np.copy(state_1)
+      action_reward_state_sequence = []
+
       done = False
-      # 1% of the time we record verbose info for entire episode about loss etc
       while not done:
         # choose action
-        action = self.naf.action_given([state_1], add_noise=True)
+        action = self.naf.action_given(state_1, add_noise=True)
         # take action step in env
         state_2, reward, done, _ = self.env.step(action)
-        # add to replay memory
-        self.replay_memory.add(state_1, action, reward, done, state_2)
+        rewards.append(reward)
+        # cache for adding to replay memory
+        action_reward_state_sequence.append((action, reward, np.copy(state_2)))
         # do a training step (after waiting for buffer to fill a bit...)
         if self.replay_memory.size() > opts.replay_memory_burn_in:
           # run a set of batches
           for _ in xrange(batches_per_step):
-            batch = self.replay_memory.random_batch(batch_size)
+            batch = self.replay_memory.batch(batch_size)
             self.naf.train(batch)
           # update target nets
           self.target_value_net.update_weights()
@@ -327,8 +339,9 @@ class NormalizedAdvantageFunctionAgent(object):
             print "val'\t", np.mean(vp), "\t", vp.T
         # roll state for next step.
         state_1 = state_2
-        rewards.append(reward)
-      num_actions_taken += len(rewards)
+
+      # at end of episode update replay memory
+      self.replay_memory.add_episode(initial_state, action_reward_state_sequence)
 
       # dump some stats and progress info
       stats = collections.OrderedDict()
@@ -356,6 +369,7 @@ class NormalizedAdvantageFunctionAgent(object):
         DUMP_WEIGHTS = False
 
       # exit when finished
+      num_actions_taken += len(rewards)
       if max_num_actions > 0 and num_actions_taken > max_num_actions:
         break
       if max_run_time > 0 and time.time() > start_time + max_run_time:
@@ -370,7 +384,7 @@ class NormalizedAdvantageFunctionAgent(object):
       steps = 0
       done = False
       while not done:
-        action = self.naf.action_given([state], add_noise)
+        action = self.naf.action_given(state, add_noise)
         state, reward, done, _ = self.env.step(action)
         print "EVALSTEP e%d s%d action=%s (l2=%s)" % (i, steps, action, np.linalg.norm(action))
         total_reward += reward

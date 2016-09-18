@@ -2,6 +2,18 @@
 import datetime, os, time, yaml, sys
 import numpy as np
 import tensorflow as tf
+import time
+
+class StopWatch:
+  def reset(self):
+    self.start = time.time()
+  def time(self):
+    return time.time() - self.start
+#  def __enter__(self):
+#    self.start = time.time()
+#    return self
+#  def __exit__(self, *args):
+#    self.time = time.time() - self.start
 
 def l2_norm(tensor):
   """(row wise) l2 norm of a tensor"""
