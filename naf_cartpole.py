@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import argparse
-import base_network
 import bullet_cartpole
 import collections
 import datetime
@@ -11,7 +10,6 @@ import replay_memory
 import signal
 import sys
 import tensorflow as tf
-import tensorflow.contrib.slim as slim
 import time
 import util
 
@@ -62,6 +60,9 @@ def set_dump_weights(signal, frame):
   DUMP_WEIGHTS = True
 signal.signal(signal.SIGUSR2, set_dump_weights)
 
+env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=False)
+import base_network
+import tensorflow.contrib.slim as slim
 
 class ValueNetwork(base_network.Network):
   """ Value network component of a NAF network. Created as seperate net because it has a target network."""
@@ -385,8 +386,6 @@ class NormalizedAdvantageFunctionAgent(object):
 
 
 def main():
-  env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=False)
-
 #  with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess:
   with tf.Session() as sess:
     agent = NormalizedAdvantageFunctionAgent(env=env, agent_opts=opts)
