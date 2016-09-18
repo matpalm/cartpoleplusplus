@@ -114,7 +114,6 @@ if __name__ == "__main__":
       dir = "%s/ep_%05d" % (opts.img_output_dir, episode_id)
       make_dir(dir)
       for event_id, event in enumerate(episode.event):
-        print event
         for state_id, state in enumerate(event.state):
           # open RGB png in an image canvas
           img = Image.open(StringIO.StringIO(state.render.png_bytes))
