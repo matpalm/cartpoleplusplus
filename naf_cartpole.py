@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import argparse
-import base_network
 import bullet_cartpole
 import collections
 import datetime
@@ -51,7 +50,7 @@ sys.stderr.write("%s\n" % opts)
 
 # TODO: if we import slim _before_ building cartpole env we can't start bullet with GL gui o_O
 env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=False)
-import base_netork
+import base_network
 import tensorflow.contrib.slim as slim
 
 VERBOSE_DEBUG = False
@@ -389,7 +388,10 @@ class NormalizedAdvantageFunctionAgent(object):
 
 
 def main():
-  with tf.Session() as sess:
+  config = tf.ConfigProto()
+#  config.gpu_options.allow_growth = True
+#  config.log_device_placement = True
+  with tf.Session(config=config) as sess:
     agent = NormalizedAdvantageFunctionAgent(env=env, agent_opts=opts)
 
     # setup saver util and either load latest ckpt, or init if none...
