@@ -7,7 +7,6 @@ import json
 import numpy as np
 import sys
 import tensorflow as tf
-import tensorflow.contrib.slim as slim
 from tensorflow.python.ops import init_ops
 import time
 import util
@@ -31,6 +30,10 @@ bullet_cartpole.add_opts(parser)
 opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
 assert not opts.use_raw_pixels, "TODO: add convnet from ddpg here"
+
+# TODO: if we import slim _before_ building cartpole env we can't start bullet with GL gui o_O
+env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=True)
+import tensorflow.contrib.slim as slim
 
 class LikelihoodRatioPolicyGradientAgent(object):
   def __init__(self, env, hidden_dim, optimiser, gui=False):
@@ -187,8 +190,6 @@ class LikelihoodRatioPolicyGradientAgent(object):
 
 
 def main():
-  env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=True)
-
   with tf.Session() as sess:
     agent = LikelihoodRatioPolicyGradientAgent(env=env, gui=opts.gui,
                                                hidden_dim=opts.num_hidden,

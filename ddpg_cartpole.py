@@ -9,7 +9,6 @@ import replay_memory
 import signal
 import sys
 import tensorflow as tf
-import tensorflow.contrib.slim as slim
 import time
 import util
 
@@ -37,8 +36,6 @@ parser.add_argument('--actor-learning-rate', type=float, default=0.001, help="le
 parser.add_argument('--critic-learning-rate', type=float, default=0.01, help="learning rate for critic")
 parser.add_argument('--actor-gradient-clip', type=float, default=None, help="clip actor gradients at this l2 norm")
 parser.add_argument('--critic-gradient-clip', type=float, default=None, help="clip critic gradients at this l2 norm")
-parser.add_argument('--actor-activation-init-magnitude', type=float, default=0.001,
-                    help="weight magnitude for actor final activation. explicitly near zero to force near zero predictions initially")
 parser.add_argument('--critic-bellman-discount', type=float, default=0.99, help="discount for RHS of critic bellman equation update")
 parser.add_argument('--replay-memory-size', type=int, default=50000, help="max size of replay memory")
 parser.add_argument('--replay-memory-burn-in', type=int, default=1000, help="dont train from replay memory until it reaches this size")
@@ -50,8 +47,10 @@ parser.add_argument('--action-noise-sigma', type=float, default=0.2,
 bullet_cartpole.add_opts(parser)
 opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
-sys.stderr.write("first training at epoch %s\n" % (opts.batch_size * \
-                                                   opts.batches_per_step * 10))
+
+# TODO: if we import slim _before_ building cartpole env we can't start bullet with GL gui o_O
+env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=False)
+import tensorflow.contrib.slim as slim
 
 VERBOSE_DEBUG = False
 def toggle_verbose_debug(signal, frame):
@@ -139,7 +138,6 @@ class ActorNetwork(Network):
   def __init__(self, namespace, state_shape, action_dim,
                hidden_layer_config,
                explore_theta=0.0, explore_sigma=0.0,
-               actor_activation_init_magnitude=1e-3,
                use_raw_pixels=False):
     super(ActorNetwork, self).__init__(namespace)
 
@@ -153,7 +151,9 @@ class ActorNetwork(Network):
       if use_raw_pixels:
         # simple conv net with one hidden layer on top
         conv_net = self.simple_conv_net_on(self.input_state)
-        final_hidden = slim.fully_connected(conv_net, 50, scope='hidden1')
+        hidden1 = slim.fully_connected(conv_net, 400, scope='hidden1')
+        final_hidden = slim.fully_connected(hidden1, 50, scope='hidden2')
+
       else:
         # stack of hidden layers on flattened input; (batch,2,2,7) -> (batch,28)
         flat_input_state = slim.flatten(self.input_state, scope='flat')
@@ -162,14 +162,9 @@ class ActorNetwork(Network):
 
       # TODO: add dropout for both nets!
 
-      # action dim output. note: actors out is (-1, 1) and scaled in env as required.
-      weights_initializer = tf.random_uniform_initializer(-actor_activation_init_magnitude,
-                                                          actor_activation_init_magnitude)
-      # final
       self.output_action = slim.fully_connected(scope='output_action',
                                                 inputs=final_hidden,
                                                 num_outputs=action_dim,
-                                                weights_initializer=weights_initializer,
                                                 weights_regularizer=self.l2(),
                                                 activation_fn=tf.nn.tanh)
 
@@ -234,14 +229,10 @@ class CriticNetwork(Network):
     with tf.variable_scope(namespace):
       if use_raw_pixels:
         conv_net = self.simple_conv_net_on(self.input_state)
-        hidden1 = slim.fully_connected(scope="hidden1",
-                                       inputs=conv_net,
-                                       num_outputs=50,
-                                       weights_regularizer=self.l2())
-        concat_inputs = tf.concat(1, [hidden1, self.input_action])
-        final_hidden = slim.fully_connected(scope="hidden2",
-                                            inputs=concat_inputs,
-                                            num_outputs=50)
+        hidden1 = slim.fully_connected(conv_net, 200, scope='hidden1')
+        hidden2 = slim.fully_connected(hidden1, 50, scope='hidden2')
+        concat_inputs = tf.concat(1, [hidden2, self.input_action])
+        final_hidden = slim.fully_connected(concat_inputs, 50, scope="hidden3")
       else:
         # stack of hidden layers on flattened input; (batch,2,2,7) -> (batch,28)
         flat_input_state = slim.flatten(self.input_state, scope='flat')
@@ -338,7 +329,6 @@ class DeepDeterministicPolicyGradientAgent(object):
                               agent_opts.actor_hidden_layers,
                               agent_opts.action_noise_theta,
                               agent_opts.action_noise_sigma,
-                              agent_opts.actor_activation_init_magnitude,
                               agent_opts.use_raw_pixels)
     self.critic = CriticNetwork("critic", self.actor, 
                                 agent_opts.critic_hidden_layers,
@@ -458,7 +448,7 @@ class DeepDeterministicPolicyGradientAgent(object):
       while not done:
         action = self.actor.action_given([state], add_noise)
         state, reward, done, _ = self.env.step(action)
-#        print "EVALSTEP r%s %s %s %s" % (i, steps, np.linalg.norm(action), reward)
+        print "EVALSTEP r%s %s %s %s %s" % (i, steps, np.squeeze(action), np.linalg.norm(action), reward)
         total_reward += reward
         steps += 1
       print "EVAL", i, steps, total_reward
@@ -473,7 +463,6 @@ class DeepDeterministicPolicyGradientAgent(object):
     print "weights written to", fn
 
 def main():
-  env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=False)
 
   with tf.Session() as sess:  #config=tf.ConfigProto(log_device_placement=True)) as sess:
     agent = DeepDeterministicPolicyGradientAgent(env=env, agent_opts=opts)
