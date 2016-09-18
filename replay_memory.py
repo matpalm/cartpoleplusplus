@@ -32,10 +32,13 @@ class ReplayMemory(object):
 
     # create an op, and corresponding placeholders, used for inserting a single entry into
     # state cache.
-    self.state_idx = idx = tf.placeholder(tf.int32)
-    self.state_update = tf.placeholder(tf.float32, shape=state_shape)
-    self.update_op = tf.scatter_update(self.state, indices=[self.state_idx],
-                                       updates=[self.state_update])
+    self.state_idxs = idx = tf.placeholder(tf.int32, shape=[None])
+    self.state_updates = tf.placeholder(tf.float32, shape=[None]+list(state_shape))
+    self.update_op = tf.scatter_update(self.state,
+                                       indices=self.state_idxs,
+                                       updates=self.state_updates)
+#    self.update_op = tf.scatter_update(self.state, indices=[self.state_idx],
+#                                       updates=[self.state_update])
 
     # keep track of free slots in state buffer
     self.state_free_slots = list(range(self.state_buffer_size))
@@ -58,14 +61,15 @@ class ReplayMemory(object):
 
   def cache_state(self, state):
     """ add a single state to memory & return index. used for first state in episode """
+    # TODO: suspect need to be able to run update_op for a BATCH of ids...
     self.stats['>cache_state'] += 1
     assert state is not None
     if len(self.state_free_slots) == 0:
       raise Exception("out of memory for state buffer; decrease buffer_size (or include load_factor)")
     slot = self.state_free_slots.pop(0)
     self.sess.run(self.update_op,
-                  feed_dict={self.state_idx: slot,
-                             self.state_update: state})
+                  feed_dict={self.state_idxs: [slot],
+                             self.state_updates: [state]})
     return slot
 
   def add_episode(self, initial_state, action_reward_state_sequence):
