@@ -37,6 +37,7 @@ for _ in xrange(opts.num_eval):
     steps += 1
     if opts.max_episode_len is not None and steps > opts.max_episode_len:
       break
+  print steps
 
 env.reset()  # hack to flush last event log if required
 

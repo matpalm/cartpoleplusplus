@@ -1,23 +1,33 @@
 #!/usr/bin/env python
 import argparse
+import base_network
 import bullet_cartpole
+import collections
 import datetime
 import gym
 import json
 import numpy as np
+import signal
 import sys
 import tensorflow as tf
 from tensorflow.python.ops import init_ops
 import time
 import util
-import collections
 
-np.set_printoptions(precision=3, threshold=10000, suppress=True, linewidth=10000)
+np.set_printoptions(precision=5, threshold=10000, suppress=True, linewidth=10000)
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--num-hidden', type=int, default=32)
 parser.add_argument('--num-eval', type=int, default=0,
                     help="if >0 just run this many episodes with no training")
+parser.add_argument('--max-num-actions', type=int, default=0,
+                    help="train for (at least) this number of actions (always finish current episode)"
+                         " ignore if <=0")
+parser.add_argument('--max-run-time', type=int, default=0,
+                    help="train for (at least) this number of seconds (always finish current episode)"
+                         " ignore if <=0")
+parser.add_argument('--target-update-rate', type=float, default=0.0001,
+                    help="REFACTORING WIP")
 parser.add_argument('--num-train-batches', type=int, default=10,
                     help="number of training batches to run")
 parser.add_argument('--rollouts-per-batch', type=int, default=10,
@@ -26,6 +36,7 @@ parser.add_argument('--ckpt-dir', type=str, default=None,
                     help="if set save ckpts to this dir")
 parser.add_argument('--ckpt-freq', type=int, default=300,
                     help="freq (sec) to save ckpts")
+parser.add_argument('--eval-action-noise', action='store_true', help="whether to use noise during eval")
 bullet_cartpole.add_opts(parser)
 opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
@@ -33,9 +44,24 @@ assert not opts.use_raw_pixels, "TODO: add convnet from ddpg here"
 
 # TODO: if we import slim _before_ building cartpole env we can't start bullet with GL gui o_O
 env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=True)
+import base_netork
 import tensorflow.contrib.slim as slim
 
+VERBOSE_DEBUG = False
+def toggle_verbose_debug(signal, frame):
+  global VERBOSE_DEBUG
+  VERBOSE_DEBUG = not VERBOSE_DEBUG
+signal.signal(signal.SIGUSR1, toggle_verbose_debug)
+
+DUMP_WEIGHTS = False
+def set_dump_weights(signal, frame):
+  global DUMP_WEIGHTS
+  DUMP_WEIGHTS = True
+signal.signal(signal.SIGUSR2, set_dump_weights)
+
+
 class LikelihoodRatioPolicyGradientAgent(object):
+
   def __init__(self, env, hidden_dim, optimiser, gui=False):
     self.env = env
     self.gui = gui
@@ -144,15 +170,25 @@ class LikelihoodRatioPolicyGradientAgent(object):
                                                       self.advantages: advantages})
     return float(loss)
 
-  def run_training(self, num_batches, rollouts_per_batch, saver_util):
-    for batch_id in xrange(num_batches):
-      self.run_eval(1)
+  def hook_up_target_networks(self, target_update_rate):
+	pass
 
+  def run_training(self, max_num_actions, max_run_time, rollouts_per_batch,
+                   saver_util):
+    # log start time, in case we are limiting by time...
+    start_time = time.time()
+
+    # run for some max number of actions
+    num_actions_taken = 0
+    n = 0
+    while True:
+      total_rewards = []
       # perform a number of rollouts
       batch_observations, batch_actions, batch_advantages = [], [], []
       total_rewards = []
       for _ in xrange(rollouts_per_batch):
         observations, actions, rewards = self.rollout()
+        num_actions_taken += len(rewards)
         batch_observations += observations
         batch_actions += actions
         # train with advantages, not per observation/action rewards.
@@ -169,24 +205,51 @@ class LikelihoodRatioPolicyGradientAgent(object):
       else:
         loss = self.train(batch_observations, batch_actions, batch_advantages)
 
-      # dump some stats
+      # dump some stats and progress info
       stats = collections.OrderedDict()
-      stats["time"] = int(time.time())
-      stats["batch"] = batch_id
+      stats["time"] = time.time()
+      stats["n"] = n
       stats["mean_batch"] = np.mean(total_rewards)
       stats["rewards"] = total_rewards
       stats["loss"] = loss
       print "STATS %s\t%s" % (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                               json.dumps(stats))
+      n += 1
 
       # save if required
       if saver_util is not None:
         saver_util.save_if_required()
 
-  def run_eval(self, num_eval):
-    for _ in xrange(num_eval):
+      # emit occasional eval
+      if VERBOSE_DEBUG or n % 100 == 0:
+        self.run_eval(1)
+
+      # dump weights once if requested
+      global DUMP_WEIGHTS
+      if DUMP_WEIGHTS:
+        self.debug_dump_network_weights()
+        DUMP_WEIGHTS = False
+
+      # exit when finished
+      if max_num_actions > 0 and num_actions_taken > max_num_actions:
+        break
+      if max_run_time > 0 and time.time() > start_time + max_run_time:
+        break
+
+
+  def run_eval(self, num_episodes, add_noise=False):
+    for _ in xrange(num_episodes):
       _, _, rewards = self.rollout(sampling=False)
       print sum(rewards)
+
+  def debug_dump_network_weights(self):
+    fn = "/tmp/weights.%s" % time.time()
+    with open(fn, "w") as f:
+      f.write("DUMP time %s\n" % time.time())
+      for var in tf.all_variables():
+        f.write("VAR %s %s\n" % (var.name, var.get_shape()))
+        f.write("%s\n" % var.eval())
+    print "weights written to", fn
 
 
 def main():
@@ -195,21 +258,28 @@ def main():
                                                hidden_dim=opts.num_hidden,
                                                optimiser=tf.train.AdamOptimizer())
 
-    # setup saver util; will load latest ckpt, or init if none...
+    # setup saver util and either load latest ckpt, or init if none...
     saver_util = None
     if opts.ckpt_dir is not None:
       saver_util = util.SaverUtil(sess, opts.ckpt_dir, opts.ckpt_freq)
     else:
       sess.run(tf.initialize_all_variables())
 
+    # now that we've either init'd from scratch, or loaded up a checkpoint,
+    # we can hook together target networks
+    agent.hook_up_target_networks(opts.target_update_rate)
+
     # run either eval or training
     if opts.num_eval > 0:
-      agent.run_eval(opts.num_eval)
+      agent.run_eval(opts.num_eval, opts.eval_action_noise)
     else:
-      agent.run_training(opts.num_train_batches, opts.rollouts_per_batch,
+      agent.run_training(opts.max_num_actions, opts.max_run_time,
+                         opts.rollouts_per_batch,
                          saver_util)
       if saver_util is not None:
         saver_util.force_save()
+
+    env.reset()  # just to flush logging, clumsy :/
 
 if __name__ == "__main__":
   main()
