@@ -3,7 +3,9 @@ import numpy as np
 import sys
 import tensorflow as tf
 
-Batch = collections.namedtuple("Batch", "s1_idx action reward terminal_mask s2_idx")
+Batch = collections.namedtuple("Batch", "state_1_idx action reward terminal_mask state_2_idx")
+
+# TODO: support loading from existing event.log
 
 class ReplayMemory(object):
   def __init__(self, sess, buffer_size, state_shape, action_dim, load_factor=1.5):
@@ -37,8 +39,6 @@ class ReplayMemory(object):
     self.update_op = tf.scatter_update(self.state,
                                        indices=self.state_idxs,
                                        updates=self.state_updates)
-#    self.update_op = tf.scatter_update(self.state, indices=[self.state_idx],
-#                                       updates=[self.state_update])
 
     # keep track of free slots in state buffer
     self.state_free_slots = list(range(self.state_buffer_size))
@@ -59,29 +59,27 @@ class ReplayMemory(object):
     return (self.batch_state_1, self.batch_state_1_idx,
             self.batch_state_2, self.batch_state_2_idx)
 
-  def cache_state(self, state):
-    """ add a single state to memory & return index. used for first state in episode """
-    # TODO: suspect need to be able to run update_op for a BATCH of ids...
-    self.stats['>cache_state'] += 1
-    assert state is not None
-    if len(self.state_free_slots) == 0:
-      raise Exception("out of memory for state buffer; decrease buffer_size (or include load_factor)")
-    slot = self.state_free_slots.pop(0)
-    self.sess.run(self.update_op,
-                  feed_dict={self.state_idxs: [slot],
-                             self.state_updates: [state]})
-    return slot
-
   def add_episode(self, initial_state, action_reward_state_sequence):
     self.stats['>add_episode'] += 1
     assert len(action_reward_state_sequence) > 0
-    state_1_idx = self.cache_state(initial_state)
+
+    state_1_idx = self.state_free_slots.pop(0)
+    update_slots = [state_1_idx]
+    update_states = [initial_state]
+
     for n, (action, reward, state_2) in enumerate(action_reward_state_sequence):
       terminal = n == len(action_reward_state_sequence)-1
-      state_2_idx = self.add(state_1_idx, action, reward, terminal, state_2)
+      state_2_idx = self._add(state_1_idx, action, reward, terminal, state_2)
+      update_slots.append(state_2_idx)
+      update_states.append(state_2)
       state_1_idx = state_2_idx  # be explicit about rolling
 
-  def add(self, s1_idx, a, r, t, s2):
+    # update variable in one call for entire episode
+    self.sess.run(self.update_op,
+                  feed_dict={self.state_idxs: update_slots,
+                             self.state_updates: update_states})
+
+  def _add(self, s1_idx, a, r, t, s2):
     self.stats['>add'] += 1
     assert s1_idx >= 0, s1_idx
     assert s1_idx < self.state_buffer_size, s1_idx
@@ -107,8 +105,8 @@ class ReplayMemory(object):
     # side of the bellman equation
     self.terminal_mask[self.insert] = 0.0 if t else 1.0
 
-    # state_2 is fully provided so we need to cache it and store the reference index
-    s2_idx = self.cache_state(s2)
+    # state_2 is fully provided so we need to prepare a new slot for it
+    s2_idx = self.state_free_slots.pop(0)
     self.state_2_idx[self.insert] = s2_idx
 
     # move insert ptr forward
@@ -117,7 +115,7 @@ class ReplayMemory(object):
       self.insert = 0
       self.full = True
 
-    # return s2 ptr
+    # return s2 idx
     return s2_idx
 
   def size(self):

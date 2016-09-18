@@ -40,7 +40,7 @@ parser.add_argument('--critic-gradient-clip', type=float, default=None, help="cl
 parser.add_argument('--actor-activation-init-magnitude', type=float, default=0.001,
                     help="weight magnitude for actor final activation. explicitly near zero to force near zero predictions initially")
 parser.add_argument('--critic-bellman-discount', type=float, default=0.99, help="discount for RHS of critic bellman equation update")
-parser.add_argument('--replay-memory-size', type=int, default=50000, help="max size of replay memory")
+parser.add_argument('--replay-memory-size', type=int, default=22000, help="max size of replay memory")
 parser.add_argument('--replay-memory-burn-in', type=int, default=1000, help="dont train from replay memory until it reaches this size")
 parser.add_argument('--eval-action-noise', action='store_true', help="whether to use noise during eval")
 parser.add_argument('--action-noise-theta', type=float, default=0.01,
@@ -220,7 +220,7 @@ class ActorNetwork(Network):
     # training actor only requires state since we are trying to maximise the
     # q_value according to the critic.
     tf.get_default_session().run(self.train_op,
-                                 feed_dict={self.input_state: state})
+                                 feed_dict={self.input_state_idx: state_idx})
 
 
 class CriticNetwork(Network):
@@ -310,19 +310,19 @@ class CriticNetwork(Network):
     """ gradients for the q.value w.r.t just input_action; used for actor training"""
     return tf.gradients(self.q_value, self.input_action)[0]
 
-  def debug_q_value_for(self, state_idx, action=None):
-    feed_dict = {self.input_state_idx: state_idx}
+  def debug_q_value_for(self, input_state, action=None):
+    feed_dict = {self.input_state: input_state}
     if action is not None:
       feed_dict[self.input_action] = action
-    return tf.get_default_session().run(self.q_value, feed_dict=feed_dict)
+    return np.squeeze(tf.get_default_session().run(self.q_value, feed_dict=feed_dict))
 
-  def train(self, state_1_idx, action, reward, terminal_mask, state_2_idx):
+  def train(self, batch):
     tf.get_default_session().run(self.train_op,
-                                 feed_dict={self.input_state_idx: state_1_idx,
-                                            self.input_action: action,
-                                            self.reward: reward,
-                                            self.terminal_mask: terminal_mask,
-                                            self.input_state_2_idx: state_2_idx})
+                                 feed_dict={self.input_state_idx: batch.state_1_idx,
+                                            self.input_action: batch.action,
+                                            self.reward: batch.reward,
+                                            self.terminal_mask: batch.terminal_mask,
+                                            self.input_state_2_idx: batch.state_2_idx})
 
   def check_loss(self, state_1_idx, action, reward, terminal_mask, state_2_idx):
     return tf.get_default_session().run(self.temporal_difference_loss,
@@ -403,20 +403,23 @@ class DeepDeterministicPolicyGradientAgent(object):
       rewards = []
       # start a new episode
       state_1 = self.env.reset()
-      # add state to cache
-      state_1_idx = self.replay_memory.cache_state(state_1)
+      # prepare data for updating replay memory at end of episode
+      initial_state = np.copy(state_1)
+      action_reward_state_sequence = []
       # 1% of the time we record verbose info for entire episode about loss etc
+      done = False
       while not done:
         # choose action
-        action = self.actor.action_given(state_idx=state_1_idx, add_noise=True)
+        action = self.actor.action_given(explicit_state=state_1, add_noise=True)
         # take action step in env
         state_2, reward, done, _ = self.env.step(action)
+        rewards.append(reward)
         # do a training step (after waiting for buffer to fill a bit...)
         if self.replay_memory.size() > opts.replay_memory_burn_in:
           # run a set of batches
           for _ in xrange(batches_per_step):
-            batch = self.replay_memory.random_batch(batch_size)
-            self.actor.train(batch.state_1)
+            batch = self.replay_memory.batch(batch_size)
+            self.actor.train(batch.state_1_idx)
             self.critic.train(batch)
           # update target nets
           self.target_actor.update_weights()
@@ -424,21 +427,23 @@ class DeepDeterministicPolicyGradientAgent(object):
           # do debug (if requested) on last batch
           if VERBOSE_DEBUG:
             print "-----"
-            print "state_1", state_1
+            #print "state_1", state_1
             print "action", action
             print "reward", reward
             print "done", done
-            print "state_2", state_2
-          expected_q = float(self.critic.debug_q_value_for([state_1_idx])[0][0])
-          expected_target_q = float(self.target_critic.debug_q_value_for([state_1_idx])[0][0])
-          print "EXPECTED_Q_VALUES", expected_q, expected_target_q
+            #print "state_2", state_2
+            expected_q = self.critic.debug_q_value_for([state_1])
+            expected_target_q = self.target_critic.debug_q_value_for([state_1])
+            print "EXPECTED_Q_VALUES", expected_q, expected_target_q
 
-        # add to replay memory
-        state_2_idx = self.replay_memory.add(state_1_idx, action, reward, done, state_2)
+        # cache for adding to replay memory
+        action_reward_state_sequence.append((action, reward, np.copy(state_2)))
+
+      # at end of episode update replay memory
+      self.replay_memory.add_episode(initial_state, action_reward_state_sequence)
 
       # dump some stats and progress info
       stats["total_reward"] = np.sum(rewards)
-      stats["episode_len"] = len(rewards)
       stats["replay_memory_stats"] = self.replay_memory.current_stats()
       print "STATS %s\t%s" % (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                               json.dumps(stats))
@@ -493,7 +498,10 @@ class DeepDeterministicPolicyGradientAgent(object):
 def main():
   env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=False)
 
-  with tf.Session() as sess:  #config=tf.ConfigProto(log_device_placement=True)) as sess:
+  config = tf.ConfigProto()
+#  config.gpu_options.allow_growth = True
+#  config.log_device_placement = True
+  with tf.Session(config=config) as sess:
     agent = DeepDeterministicPolicyGradientAgent(env=env, agent_opts=opts)
 
     # setup saver util and either load latest ckpt, or init if none...
