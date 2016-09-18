@@ -75,6 +75,7 @@ class ValueNetwork(base_network.Network):
     # since state is keep in a tf variable we keep track of the variable itself
     # as well as an indexing placeholder
     self.input_state = input_state
+    print >>sys.stderr, "ValueNetwork input_state", input_state.get_shape()
     self.input_state_idx = input_state_idx
 
     with tf.variable_scope(namespace):
@@ -349,9 +350,10 @@ class NormalizedAdvantageFunctionAgent(object):
       stats["n"] = n
       stats["total_reward"] = np.sum(rewards)
       stats["episode_len"] = len(rewards)
-      stats["replay_memory_size"] = self.replay_memory.size()
+      stats["replay_memory_stats"] = self.replay_memory.current_stats()
       print "STATS %s\t%s" % (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                               json.dumps(stats))
+      sys.stdout.flush()
       n += 1
 
       # save if required
@@ -390,6 +392,7 @@ class NormalizedAdvantageFunctionAgent(object):
         total_reward += reward
         steps += 1
       print "EVAL", i, steps, total_reward
+    sys.stdout.flush()
 
   def debug_dump_network_weights(self):
     fn = "/tmp/weights.%s" % time.time()

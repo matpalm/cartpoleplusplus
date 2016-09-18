@@ -373,6 +373,7 @@ class DeepDeterministicPolicyGradientAgent(object):
       stats["replay_memory_stats"] = self.replay_memory.current_stats()
       print "STATS %s\t%s" % (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                               json.dumps(stats))
+      sys.stdout.flush()
       n += 1
 
       # save if required
@@ -412,6 +413,7 @@ class DeepDeterministicPolicyGradientAgent(object):
         total_reward += reward
         steps += 1
       print "EVAL", i, steps, total_reward
+    sys.stdout.flush()
 
   def debug_dump_network_weights(self):
     fn = "/tmp/weights.%s" % time.time()
