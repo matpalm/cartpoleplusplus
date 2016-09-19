@@ -93,7 +93,7 @@ class NafNetwork(base_network.Network):
                input_state, input_state_idx,
                input_state_2, input_state_2_idx,
                value_net, target_value_net,
-               action_dim, opts):
+               action_dim):
     super(NafNetwork, self).__init__(namespace)
 
     # noise to apply to actions during rollouts
@@ -127,7 +127,8 @@ class NafNetwork(base_network.Network):
       # this is our target op for inference (i.e. the value that maximises Q given input_state)
       with tf.variable_scope("output_action"):
         flat_input_state = slim.flatten(self.input_state, scope='flat')
-        output_action = self.hidden_layers_starting_at(flat_input_state, opts.hidden_layers)
+        output_action = self.hidden_layers_starting_at(flat_input_state, 
+                                                       opts.hidden_layers)
         self.output_action = self.fully_connected(output_action, action_dim,
                                                   activation_fn=tf.nn.tanh)  # (batch, action_dim)
 
@@ -196,27 +197,8 @@ class NafNetwork(base_network.Network):
         # calc gradients
         optimiser = tf.train.GradientDescentOptimizer(opts.learning_rate)
         gradients = optimiser.compute_gradients(self.loss)
-
-        # drop None gradients (from stop gradient cases)
-#        tmp = []
-#        for gradient, variable in enumerate(gradients):
-#          if gradient is not None:
-#            tmp.append((gradient, variable))
-#        gradients = tmp
-
-        # extract just the gradients temporarily for global clipping and then rezip
-        if opts.gradient_clip is not None:
-          just_gradients, variables = zip(*gradients)
-          just_gradients, _ = tf.clip_by_global_norm(just_gradients, opts.gradient_clip)
-          gradients = zip(just_gradients, variables)
-
-        # verbose debugging
-        if opts.print_gradients:
-          for i, (gradient, variable) in enumerate(gradients):
-            if gradient is not None:
-              gradients[i] = (tf.Print(gradient, [util.l2_norm(gradient)],
-                                       "gradient %s l2_norm " % variable.name), variable)
-
+        # potentially clip and wrap with debugging tf.Print
+        gradients = util.clip_and_debug_gradients(gradients, opts)
         # apply
         self.train_op = optimiser.apply_gradients(gradients)
 
@@ -258,7 +240,7 @@ class NafNetwork(base_network.Network):
 
 
 class NormalizedAdvantageFunctionAgent(object):
-  def __init__(self, env, agent_opts):
+  def __init__(self, env):
     self.env = env
     state_shape = self.env.observation_space.shape
     action_dim = self.env.action_space.shape[1]
@@ -266,7 +248,7 @@ class NormalizedAdvantageFunctionAgent(object):
     # for now, with single machine synchronous training, use a replay memory for training.
     # TODO: switch back to async training with multiple replicas (as in drivebot project)
     self.replay_memory = replay_memory.ReplayMemory(tf.get_default_session(),
-                                                    agent_opts.replay_memory_size,
+                                                    opts.replay_memory_size,
                                                     state_shape, action_dim)
 
     # the same input states are shared by the value nets as well as the naf networks.
@@ -277,13 +259,13 @@ class NormalizedAdvantageFunctionAgent(object):
     # initialise base models for value & naf networks.
     # value subportion of net is explicitly created seperate because it has a target network
     self.value_net = ValueNetwork("value", s1, s1_idx,
-                                  agent_opts.hidden_layers)
+                                  opts.hidden_layers)
     self.target_value_net = ValueNetwork("target_value", s2, s2_idx,
-                                         agent_opts.hidden_layers)
+                                         opts.hidden_layers)
     self.naf = NafNetwork("naf",
                           s1, s1_idx, s2, s2_idx,
                           self.value_net, self.target_value_net,
-                          action_dim, agent_opts)
+                          action_dim)
 
   def hook_up_target_networks(self, target_update_rate):
     # hook networks up to their targets
@@ -408,7 +390,7 @@ def main():
 #  config.gpu_options.allow_growth = True
 #  config.log_device_placement = True
   with tf.Session(config=config) as sess:
-    agent = NormalizedAdvantageFunctionAgent(env=env, agent_opts=opts)
+    agent = NormalizedAdvantageFunctionAgent(env=env)
 
     # setup saver util and either load latest ckpt, or init if none...
     saver_util = None

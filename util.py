@@ -27,6 +27,22 @@ def standardise(tensor):
   std_dev = tf.sqrt(variance)
   return (tensor - mean) / std_dev
 
+def clip_and_debug_gradients(gradients, opts):
+  # extract just the gradients temporarily for global clipping and then rezip
+  if opts.gradient_clip is not None:
+    just_gradients, variables = zip(*gradients)
+    just_gradients, _ = tf.clip_by_global_norm(just_gradients, opts.gradient_clip)
+    gradients = zip(just_gradients, variables)
+  # verbose debugging
+  if opts.print_gradients:
+    for i, (gradient, variable) in enumerate(gradients):
+      if gradient is not None:
+        gradients[i] = (tf.Print(gradient, [l2_norm(gradient)],
+                                 "gradient %s l2_norm " % variable.name), variable)
+  # done
+  return gradients
+
+
 class SaverUtil(object):
   def __init__(self, sess, ckpt_dir="/tmp", save_freq=60):
     self.sess = sess
@@ -69,6 +85,7 @@ class SaverUtil(object):
     """check if save is required based on time and if so, save."""
     if time.time() >= self.next_scheduled_save_time:
       self.force_save()
+
 
 class OrnsteinUhlenbeckNoise(object):
   """generate time correlated noise for action exploration"""

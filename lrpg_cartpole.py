@@ -30,6 +30,8 @@ parser.add_argument('--target-update-rate', type=float, default=0.0001,
                     help="REFACTORING WIP")
 parser.add_argument('--hidden-layers', type=str, default="100,50", help="hidden layer sizes")
 parser.add_argument('--learning-rate', type=float, default=0.001, help="learning rate")
+parser.add_argument('--gradient-clip', type=float, default=None, help="clip gradients at this l2 norm")
+parser.add_argument('--print-gradients', action='store_true', help="whether to verbose print all gradients and l2 norms")
 parser.add_argument('--num-train-batches', type=int, default=10,
                     help="number of training batches to run")
 parser.add_argument('--rollouts-per-batch', type=int, default=10,
@@ -60,7 +62,7 @@ signal.signal(signal.SIGUSR2, set_dump_weights)
 
 class LikelihoodRatioPolicyGradientAgent(base_network.Network):
 
-  def __init__(self, env, hidden_layer_config):
+  def __init__(self, env):
     self.env = env
 
     num_actions = self.env.action_space.n
@@ -81,7 +83,7 @@ class LikelihoodRatioPolicyGradientAgent(base_network.Network):
       # stack of hidden layers on flattened input; (batch,2,2,7) -> (batch,28)
       flat_input_state = slim.flatten(self.observations, scope='flat')
       final_hidden = self.hidden_layers_starting_at(flat_input_state,
-                                                    hidden_layer_config)
+                                                    opts.hidden_layers)
       logits = slim.fully_connected(inputs=final_hidden,
                                     num_outputs=num_actions,
                                     activation_fn=None)
@@ -119,8 +121,13 @@ class LikelihoodRatioPolicyGradientAgent(base_network.Network):
                                    util.standardise(self.advantages))
     self.loss = -tf.reduce_sum(action_mul_advantages)  # recall: we are maximising.
     with tf.variable_scope("optimiser"):
+      # calc gradients
       optimiser = tf.train.GradientDescentOptimizer(opts.learning_rate)
-      self.train_op = optimiser.minimize(self.loss)
+      gradients = optimiser.compute_gradients(self.loss)
+      # potentially clip and wrap with debugging tf.Print
+      gradients = util.clip_and_debug_gradients(gradients, opts)
+      # apply
+      self.train_op = optimiser.apply_gradients(gradients)
 
   def sample_action_given(self, observation, sampling):
     """ sample one action given observation"""
@@ -251,7 +258,7 @@ def main():
 #  config.gpu_options.allow_growth = True
 #  config.log_device_placement = True
   with tf.Session(config=config) as sess:
-    agent = LikelihoodRatioPolicyGradientAgent(env, opts.hidden_layers)
+    agent = LikelihoodRatioPolicyGradientAgent(env)
 
     # setup saver util and either load latest ckpt, or init if none...
     saver_util = None

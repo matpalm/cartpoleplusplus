@@ -35,9 +35,9 @@ parser.add_argument('--actor-hidden-layers', type=str, default="100,100,50", hel
 parser.add_argument('--critic-hidden-layers', type=str, default="100,100,50", help="critic hidden layer sizes")
 parser.add_argument('--actor-learning-rate', type=float, default=0.001, help="learning rate for actor")
 parser.add_argument('--critic-learning-rate', type=float, default=0.01, help="learning rate for critic")
-parser.add_argument('--actor-gradient-clip', type=float, default=None, help="clip actor gradients at this l2 norm")
-parser.add_argument('--critic-gradient-clip', type=float, default=None, help="clip critic gradients at this l2 norm")
-parser.add_argument('--critic-bellman-discount', type=float, default=0.99, help="discount for RHS of critic bellman equation update")
+parser.add_argument('--gradient-clip', type=float, default=None, help="clip gradients at this l2 norm")
+parser.add_argument('--print-gradients', action='store_true', help="whether to verbose print all gradients and l2 norms")
+parser.add_argument('--discount', type=float, default=0.99, help="discount for RHS of critic bellman equation update")
 parser.add_argument('--replay-memory-size', type=int, default=22000, help="max size of replay memory")
 parser.add_argument('--replay-memory-burn-in', type=int, default=1000, help="dont train from replay memory until it reaches this size")
 parser.add_argument('--eval-action-noise', action='store_true', help="whether to use noise during eval")
@@ -70,10 +70,7 @@ signal.signal(signal.SIGUSR2, set_dump_weights)
 class ActorNetwork(base_network.Network):
   """ the actor represents the learnt policy mapping states to actions"""
 
-  def __init__(self, namespace, input_state, input_state_idx, action_dim,
-               hidden_layer_config,
-               explore_theta=0.0, explore_sigma=0.0,
-               use_raw_pixels=False):
+  def __init__(self, namespace, input_state, input_state_idx, action_dim):
     super(ActorNetwork, self).__init__(namespace)
 
     # since state is keep in a tf variable we keep track of the variable itself
@@ -81,10 +78,12 @@ class ActorNetwork(base_network.Network):
     self.input_state = input_state
     self.input_state_idx = input_state_idx
 
-    self.exploration_noise = util.OrnsteinUhlenbeckNoise(action_dim, explore_theta, explore_sigma)
+    self.exploration_noise = util.OrnsteinUhlenbeckNoise(action_dim, 
+                                                         opts.action_noise_theta,
+                                                         opts.action_noise_sigma)
 
     with tf.variable_scope(namespace):
-      if use_raw_pixels:
+      if opts.use_raw_pixels:
         # simple conv net with one hidden layer on top
         conv_net = self.simple_conv_net_on(self.input_state)
         hidden1 = slim.fully_connected(conv_net, 400, scope='hidden1')
@@ -93,7 +92,7 @@ class ActorNetwork(base_network.Network):
         # stack of hidden layers on flattened input; (batch,2,2,7) -> (batch,28)
         flat_input_state = slim.flatten(input_state, scope='flat')
         final_hidden = self.hidden_layers_starting_at(flat_input_state,
-                                                      hidden_layer_config)
+                                                      opts.actor_hidden_layers)
 
       # TODO: add dropout for both nets!
 
@@ -103,7 +102,7 @@ class ActorNetwork(base_network.Network):
                                                 weights_regularizer=self.l2(),
                                                 activation_fn=tf.nn.tanh)
 
-  def init_ops_for_training(self, critic, learning_rate, gradient_clip_norm):
+  def init_ops_for_training(self, critic):
     # actors gradients are the gradients for it's output w.r.t it's vars using initial
     # gradients provided by critic. this requires that critic was init'd with an
     # input_action = actor.output_action (which is natural anyway)
@@ -112,18 +111,15 @@ class ActorNetwork(base_network.Network):
     # note that we negate the gradients from critic since we are trying to maximise
     # the q values (not minimise like a loss)
     with tf.variable_scope("optimiser"):
-      actor_gradients = tf.gradients(self.output_action,
-                                     self.trainable_model_vars(),
-                                     tf.neg(critic.q_gradients_wrt_actions()))
-      for i, gradient in enumerate(actor_gradients):
-        if gradient_clip_norm is not None:
-          gradient = tf.clip_by_norm(gradient, gradient_clip_norm)
-#        gradient = tf.Print(gradient, [util.l2_norm(gradient)], "actor gradient %d l2_norm pre " % i)
-        actor_gradients[i] = gradient
-#      optimiser = tf.train.AdamOptimizer(learning_rate)
-      optimiser = tf.train.GradientDescentOptimizer(learning_rate)
-      self.train_op = optimiser.apply_gradients(zip(actor_gradients,
-                                                    self.trainable_model_vars()))
+      gradients = tf.gradients(self.output_action,
+                               self.trainable_model_vars(),
+                               tf.neg(critic.q_gradients_wrt_actions()))
+      gradients = zip(gradients, self.trainable_model_vars())
+      # potentially clip and wrap with debugging
+      gradients = util.clip_and_debug_gradients(gradients, opts)
+      # apply
+      optimiser = tf.train.GradientDescentOptimizer(opts.actor_learning_rate)
+      self.train_op = optimiser.apply_gradients(gradients)
 
   def action_given(self, state_idx=None, explicit_state=None, add_noise=False):
     # TODO: drop state_idx, never use it...
@@ -156,10 +152,8 @@ class ActorNetwork(base_network.Network):
 class CriticNetwork(base_network.Network):
   """ the critic represents a mapping from state & actors action to a quality score."""
 
-  def __init__(self, namespace, actor, hidden_layer_config,
-               discount, use_raw_pixels=False):
+  def __init__(self, namespace, actor):
     super(CriticNetwork, self).__init__(namespace)
-    self.discount = discount  # bellman update discount  TODO: config!
 
     # input state to the critic is the _same_ state given to the actor.
     # input action to the critic is simply the output action of the actor.
@@ -173,7 +167,7 @@ class CriticNetwork(base_network.Network):
     self.input_action = tf.stop_gradient(actor.output_action)
 
     with tf.variable_scope(namespace):
-      if use_raw_pixels:
+      if opts.use_raw_pixels:
         conv_net = self.simple_conv_net_on(self.input_state)
         hidden1 = slim.fully_connected(conv_net, 200, scope='hidden1')
         hidden2 = slim.fully_connected(hidden1, 50, scope='hidden2')
@@ -184,7 +178,7 @@ class CriticNetwork(base_network.Network):
         flat_input_state = slim.flatten(self.input_state, scope='flat')
         concat_inputs = tf.concat(1, [flat_input_state, self.input_action])
         final_hidden = self.hidden_layers_starting_at(concat_inputs,
-                                                      hidden_layer_config)
+                                                      opts.critic_hidden_layers)
 
       # output from critic is a single q-value
       self.q_value = slim.fully_connected(scope='q_value',
@@ -193,7 +187,7 @@ class CriticNetwork(base_network.Network):
                                           weights_regularizer=self.l2(),
                                           activation_fn=None)
 
-  def init_ops_for_training(self, target_critic, learning_rate, gradient_clip_norm):
+  def init_ops_for_training(self, target_critic):
     # update critic using bellman equation; Q(s1, a) = reward + discount * Q(s2, A(s2))
 
     # left hand side of bellman is just q_value, but let's be explicit about it...
@@ -207,7 +201,7 @@ class CriticNetwork(base_network.Network):
                                         name="critic_terminal_mask")
     self.input_state_2 = target_critic.input_state
     self.input_state_2_idx = target_critic.input_state_idx
-    bellman_rhs = self.reward + (self.terminal_mask * self.discount * target_critic.q_value)
+    bellman_rhs = self.reward + (self.terminal_mask * opts.discount * target_critic.q_value)
 
     # note: since we are NOT training target networks we stop gradients flowing to them
     bellman_rhs = tf.stop_gradient(bellman_rhs)
@@ -220,16 +214,12 @@ class CriticNetwork(base_network.Network):
     self.temporal_difference_loss = tf.reduce_mean(tf.pow(temporal_difference, 2))
 #    self.temporal_difference_loss = tf.Print(self.temporal_difference_loss, [self.temporal_difference_loss], 'temporal_difference_loss')
     with tf.variable_scope("optimiser"):
-      #optimizer = tf.train.AdamOptimizer(learning_rate)
-      optimiser = tf.train.GradientDescentOptimizer(learning_rate)
+      # calc gradients
+      optimiser = tf.train.GradientDescentOptimizer(opts.critic_learning_rate)
       gradients = optimiser.compute_gradients(self.temporal_difference_loss)
-      for i, (gradient, variable) in enumerate(gradients):
-        if gradient is None:  # these are the stop gradient cases; ignore them
-          continue
-        if gradient_clip_norm is not None:
-          gradient = tf.clip_by_norm(gradient, gradient_clip_norm)
-#        gradient = tf.Print(gradient, [util.l2_norm(gradient)], "critic gradient %d l2_norm " % i)
-        gradients[i] = (gradient, variable)
+      # potentially clip and wrap with debugging tf.Print
+      gradients = util.clip_and_debug_gradients(gradients, opts)
+      # apply
       self.train_op = optimiser.apply_gradients(gradients)
 
   def q_gradients_wrt_actions(self):
@@ -260,7 +250,7 @@ class CriticNetwork(base_network.Network):
 
 
 class DeepDeterministicPolicyGradientAgent(object):
-  def __init__(self, env, agent_opts):
+  def __init__(self, env):
     self.env = env
     state_shape = self.env.observation_space.shape
     action_dim = self.env.action_space.shape[1]
@@ -269,7 +259,7 @@ class DeepDeterministicPolicyGradientAgent(object):
     # this replay memory stores states in a Variable (ie potentially in gpu memory)
     # TODO: switch back to async training with multiple replicas (as in drivebot project)
     self.replay_memory = replay_memory.ReplayMemory(tf.get_default_session(),
-                                                    agent_opts.replay_memory_size,
+                                                    opts.replay_memory_size,
                                                     state_shape, action_dim)
 
     # in the --use-raw-pixels case states are very large so we want them stored in tf variable
@@ -279,32 +269,16 @@ class DeepDeterministicPolicyGradientAgent(object):
 
     # initialise base models for actor / critic and their corresponding target networks
     # target_actor is never used for online sampling so doesn't need explore noise.
-    self.actor = ActorNetwork("actor", s1, s1_idx, action_dim,
-                              agent_opts.actor_hidden_layers,
-                              agent_opts.action_noise_theta,
-                              agent_opts.action_noise_sigma,
-                              agent_opts.use_raw_pixels)
-    self.critic = CriticNetwork("critic", self.actor,
-                                agent_opts.critic_hidden_layers,
-                                agent_opts.critic_bellman_discount,
-                                use_raw_pixels=agent_opts.use_raw_pixels)
-    self.target_actor = ActorNetwork("target_actor", s2, s2_idx, action_dim,
-                                     agent_opts.actor_hidden_layers,
-                                     use_raw_pixels=agent_opts.use_raw_pixels)
-    self.target_critic = CriticNetwork("target_critic", self.target_actor,
-                                       agent_opts.critic_hidden_layers,
-                                       agent_opts.critic_bellman_discount,
-                                       use_raw_pixels=agent_opts.use_raw_pixels)
+    self.actor = ActorNetwork("actor", s1, s1_idx, action_dim)
+    self.critic = CriticNetwork("critic", self.actor)
+    self.target_actor = ActorNetwork("target_actor", s2, s2_idx, action_dim)
+    self.target_critic = CriticNetwork("target_critic", self.target_actor)
 
     # setup training ops;
     # training actor requires the critic (for getting gradients)
     # training critic requires target_critic (for RHS of bellman update)
-    self.actor.init_ops_for_training(self.critic,
-                                     agent_opts.actor_learning_rate,
-                                     agent_opts.actor_gradient_clip)
-    self.critic.init_ops_for_training(self.target_critic,
-                                      agent_opts.critic_learning_rate,
-                                      agent_opts.critic_gradient_clip)
+    self.actor.init_ops_for_training(self.critic)
+    self.critic.init_ops_for_training(self.target_critic)
 
   def hook_up_target_networks(self, target_update_rate):
     # hook networks up to their targets
@@ -430,7 +404,7 @@ def main():
 #  config.gpu_options.allow_growth = True
 #  config.log_device_placement = True
   with tf.Session(config=config) as sess:
-    agent = DeepDeterministicPolicyGradientAgent(env=env, agent_opts=opts)
+    agent = DeepDeterministicPolicyGradientAgent(env=env)
 
     # setup saver util and either load latest ckpt, or init if none...
     saver_util = None
