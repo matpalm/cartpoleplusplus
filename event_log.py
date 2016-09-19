@@ -108,7 +108,7 @@ if __name__ == "__main__":
     if opts.echo:
       print "-----", episode_id
       print episode
-    total_num_read_episodes + 1
+    total_num_read_episodes += 1
     total_num_read_events += len(episode.event)
     if opts.img_output_dir is not None:
       dir = "%s/ep_%05d" % (opts.img_output_dir, episode_id)
