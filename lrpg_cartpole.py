@@ -160,6 +160,8 @@ class LikelihoodRatioPolicyGradientAgent(base_network.Network):
       observation, reward, done, _ = self.env.step(action)
       actions.append(action)
       rewards.append(reward)
+    if VERBOSE_DEBUG:
+      print "rollout: sampling=%s actions=%s" % (sampling, actions)
     return observations, actions, rewards
 
   def train(self, observations, actions, advantages):

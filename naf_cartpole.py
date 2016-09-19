@@ -47,6 +47,7 @@ parser.add_argument('--action-noise-sigma', type=float, default=0.2,
 bullet_cartpole.add_opts(parser)
 opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
+assert not opts.use_raw_pixels, "TODO: add convnet from ddpg here"
 
 # TODO: if we import slim _before_ building cartpole env we can't start bullet with GL gui o_O
 env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=False)

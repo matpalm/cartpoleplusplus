@@ -121,17 +121,10 @@ class ActorNetwork(base_network.Network):
       optimiser = tf.train.GradientDescentOptimizer(opts.actor_learning_rate)
       self.train_op = optimiser.apply_gradients(gradients)
 
-  def action_given(self, state_idx=None, explicit_state=None, add_noise=False):
-    # TODO: drop state_idx, never use it...
-    assert (state_idx is None) ^ (explicit_state is None)
-    if state_idx is not None:
-      # feed state_idx; state has to have been cached previously during training rollout.
-      actions = tf.get_default_session().run(self.output_action,
-                                             feed_dict={self.input_state_idx: [state_idx]})
-    else:
-      # feed explicitly provided state
-      actions = tf.get_default_session().run(self.output_action,
-                                             feed_dict={self.input_state: [explicit_state]})
+  def action_given(self, state, add_noise=False):
+    # feed explicitly provided state
+    actions = tf.get_default_session().run(self.output_action,
+                                           feed_dict={self.input_state: [state]})
 
     # NOTE: noise is added _outside_ tf graph. we do this simply because the noisy output
     # is never used for any part of computation graph required for online training. it's
@@ -210,8 +203,8 @@ class CriticNetwork(base_network.Network):
     # temporal difference we use a squared loss for optimisation and, as for actor, we
     # wrap optimiser in a namespace so it's not picked up by target network variable
     # handling.
-    temporal_difference = bellman_lhs - bellman_rhs
-    self.temporal_difference_loss = tf.reduce_mean(tf.pow(temporal_difference, 2))
+    self.temporal_difference = bellman_lhs - bellman_rhs
+    self.temporal_difference_loss = tf.reduce_mean(tf.pow(self.temporal_difference, 2))
 #    self.temporal_difference_loss = tf.Print(self.temporal_difference_loss, [self.temporal_difference_loss], 'temporal_difference_loss')
     with tf.variable_scope("optimiser"):
       # calc gradients
@@ -226,11 +219,11 @@ class CriticNetwork(base_network.Network):
     """ gradients for the q.value w.r.t just input_action; used for actor training"""
     return tf.gradients(self.q_value, self.input_action)[0]
 
-  def debug_q_value_for(self, input_state, action=None):
-    feed_dict = {self.input_state: input_state}
-    if action is not None:
-      feed_dict[self.input_action] = action
-    return np.squeeze(tf.get_default_session().run(self.q_value, feed_dict=feed_dict))
+#  def debug_q_value_for(self, input_state, action=None):
+#    feed_dict = {self.input_state: input_state}
+#    if action is not None:
+#      feed_dict[self.input_action] = action
+#    return np.squeeze(tf.get_default_session().run(self.q_value, feed_dict=feed_dict))
 
   def train(self, batch):
     tf.get_default_session().run(self.train_op,
@@ -240,13 +233,15 @@ class CriticNetwork(base_network.Network):
                                             self.terminal_mask: batch.terminal_mask,
                                             self.input_state_2_idx: batch.state_2_idx})
 
-  def check_loss(self, state_1_idx, action, reward, terminal_mask, state_2_idx):
-    return tf.get_default_session().run(self.temporal_difference_loss,
-                                        feed_dict={self.input_state_idx: state_1_idx,
-                                                   self.input_action: action,
-                                                   self.reward: reward,
-                                                   self.terminal_mask: terminal_mask,
-                                                   self.input_state_2_idx: state_2_idx})
+  def check_loss(self, batch):
+    return tf.get_default_session().run([self.temporal_difference_loss, 
+                                         self.temporal_difference,
+                                         self.q_value],
+                                        feed_dict={self.input_state_idx: batch.state_1_idx,
+                                                   self.input_action: batch.action,
+                                                   self.reward: batch.reward,
+                                                   self.terminal_mask: batch.terminal_mask,
+                                                   self.input_state_2_idx: batch.state_2_idx})
 
 
 class DeepDeterministicPolicyGradientAgent(object):
@@ -306,7 +301,7 @@ class DeepDeterministicPolicyGradientAgent(object):
       done = False
       while not done:
         # choose action
-        action = self.actor.action_given(explicit_state=state_1, add_noise=True)
+        action = self.actor.action_given(state_1, add_noise=True)
         # take action step in env
         state_2, reward, done, _ = self.env.step(action)
         rewards.append(reward)
@@ -330,9 +325,10 @@ class DeepDeterministicPolicyGradientAgent(object):
             print "reward        ", batch.reward.T
             print "terminal_mask ", batch.terminal_mask.T
             #print "state_2", state_2
-            expected_q = self.critic.debug_q_value_for(batch.state_1_idx)
-            expected_target_q = self.target_critic.debug_q_value_for(batch.state_1_idx)
-            print "EXPECTED_Q_VALUES", expected_q, expected_target_q
+            td_loss, td, q_value = self.critic.check_loss(batch)
+            print "temporal_difference_loss", td_loss
+            print "temporal_difference", td.T
+            print "q_value", q_value.T
         # roll state for next step.
         state_1 = state_2
 
@@ -380,8 +376,7 @@ class DeepDeterministicPolicyGradientAgent(object):
       steps = 0
       done = False
       while not done:
-        action = self.actor.action_given(explicit_state=state,
-                                         add_noise=add_noise)
+        action = self.actor.action_given(state, add_noise)
         state, reward, done, _ = self.env.step(action)
         print "EVALSTEP r%s %s %s %s %s" % (i, steps, np.squeeze(action), np.linalg.norm(action), reward)
         total_reward += reward
