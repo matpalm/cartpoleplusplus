@@ -16,7 +16,6 @@ import util
 np.set_printoptions(precision=5, threshold=10000, suppress=True, linewidth=10000)
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--num-hidden', type=int, default=32)
 parser.add_argument('--num-eval', type=int, default=0,
                     help="if >0 just run this many episodes with no training")
 parser.add_argument('--max-num-actions', type=int, default=0,
@@ -25,16 +24,16 @@ parser.add_argument('--max-num-actions', type=int, default=0,
 parser.add_argument('--max-run-time', type=int, default=0,
                     help="train for (at least) this number of seconds (always finish current episode)"
                          " ignore if <=0")
+parser.add_argument('--ckpt-dir', type=str, default=None, help="if set save ckpts to this dir")
+parser.add_argument('--ckpt-freq', type=int, default=300, help="freq (sec) to save ckpts")
 parser.add_argument('--target-update-rate', type=float, default=0.0001,
                     help="REFACTORING WIP")
+parser.add_argument('--hidden-layers', type=str, default="100,50", help="hidden layer sizes")
+parser.add_argument('--learning-rate', type=float, default=0.001, help="learning rate")
 parser.add_argument('--num-train-batches', type=int, default=10,
                     help="number of training batches to run")
 parser.add_argument('--rollouts-per-batch', type=int, default=10,
                     help="number of rollouts to run for each training batch")
-parser.add_argument('--ckpt-dir', type=str, default=None,
-                    help="if set save ckpts to this dir")
-parser.add_argument('--ckpt-freq', type=int, default=300,
-                    help="freq (sec) to save ckpts")
 parser.add_argument('--eval-action-noise', action='store_true', help="whether to use noise during eval")
 bullet_cartpole.add_opts(parser)
 opts = parser.parse_args()
@@ -59,11 +58,10 @@ def set_dump_weights(signal, frame):
 signal.signal(signal.SIGUSR2, set_dump_weights)
 
 
-class LikelihoodRatioPolicyGradientAgent(object):
+class LikelihoodRatioPolicyGradientAgent(base_network.Network):
 
-  def __init__(self, env, hidden_dim, optimiser, gui=False):
+  def __init__(self, env, hidden_layer_config):
     self.env = env
-    self.gui = gui
 
     num_actions = self.env.action_space.n
 
@@ -80,14 +78,11 @@ class LikelihoodRatioPolicyGradientAgent(object):
 
     # our model is a very simple MLP
     with tf.variable_scope("model"):
-      flat_obs = slim.flatten(self.observations)
-      hidden1 = slim.fully_connected(inputs=flat_obs,
-                                     num_outputs=hidden_dim,
-                                     biases_initializer=init_ops.constant_initializer(0.1))
-      hidden2 = slim.fully_connected(inputs=hidden1,
-                                     num_outputs=hidden_dim,
-                                     biases_initializer=init_ops.constant_initializer(0.1))
-      logits = slim.fully_connected(inputs=hidden2,
+      # stack of hidden layers on flattened input; (batch,2,2,7) -> (batch,28)
+      flat_input_state = slim.flatten(self.observations, scope='flat')
+      final_hidden = self.hidden_layers_starting_at(flat_input_state,
+                                                    hidden_layer_config)
+      logits = slim.fully_connected(inputs=final_hidden,
                                     num_outputs=num_actions,
                                     activation_fn=None)
 
@@ -124,6 +119,7 @@ class LikelihoodRatioPolicyGradientAgent(object):
                                    util.standardise(self.advantages))
     self.loss = -tf.reduce_sum(action_mul_advantages)  # recall: we are maximising.
     with tf.variable_scope("optimiser"):
+      optimiser = tf.train.GradientDescentOptimizer(opts.learning_rate)
       self.train_op = optimiser.minimize(self.loss)
 
   def sample_action_given(self, observation, sampling):
@@ -157,8 +153,6 @@ class LikelihoodRatioPolicyGradientAgent(object):
       observation, reward, done, _ = self.env.step(action)
       actions.append(action)
       rewards.append(reward)
-      if self.gui:
-        self.env.render()
     return observations, actions, rewards
 
   def train(self, observations, actions, advantages):
@@ -213,6 +207,7 @@ class LikelihoodRatioPolicyGradientAgent(object):
       stats["loss"] = loss
       print "STATS %s\t%s" % (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                               json.dumps(stats))
+      sys.stdout.flush()
       n += 1
 
       # save if required
@@ -220,7 +215,7 @@ class LikelihoodRatioPolicyGradientAgent(object):
         saver_util.save_if_required()
 
       # emit occasional eval
-      if VERBOSE_DEBUG or n % 100 == 0:
+      if VERBOSE_DEBUG or n % 10 == 0:
         self.run_eval(1)
 
       # dump weights once if requested
@@ -256,9 +251,7 @@ def main():
 #  config.gpu_options.allow_growth = True
 #  config.log_device_placement = True
   with tf.Session(config=config) as sess:
-    agent = LikelihoodRatioPolicyGradientAgent(env=env, gui=opts.gui,
-                                               hidden_dim=opts.num_hidden,
-                                               optimiser=tf.train.AdamOptimizer())
+    agent = LikelihoodRatioPolicyGradientAgent(env, opts.hidden_layers)
 
     # setup saver util and either load latest ckpt, or init if none...
     saver_util = None
@@ -266,6 +259,8 @@ def main():
       saver_util = util.SaverUtil(sess, opts.ckpt_dir, opts.ckpt_freq)
     else:
       sess.run(tf.initialize_all_variables())
+    for v in tf.all_variables():
+      print >>sys.stderr, v.name, v.get_shape()
 
     # now that we've either init'd from scratch, or loaded up a checkpoint,
     # we can hook together target networks

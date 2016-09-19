@@ -32,7 +32,7 @@ parser.add_argument('--batches-per-step', type=int, default=5,
 parser.add_argument('--target-update-rate', type=float, default=0.0001,
                     help="affine combo for updating target networks each time we run a training batch")
 parser.add_argument('--actor-hidden-layers', type=str, default="100,100,50", help="actor hidden layer sizes")
-parser.add_argument('--critic-hidden-layers', type=str, default="100,100,50", help="actor hidden layer sizes")
+parser.add_argument('--critic-hidden-layers', type=str, default="100,100,50", help="critic hidden layer sizes")
 parser.add_argument('--actor-learning-rate', type=float, default=0.001, help="learning rate for actor")
 parser.add_argument('--critic-learning-rate', type=float, default=0.01, help="learning rate for critic")
 parser.add_argument('--actor-gradient-clip', type=float, default=None, help="clip actor gradients at this l2 norm")
@@ -221,8 +221,8 @@ class CriticNetwork(base_network.Network):
 #    self.temporal_difference_loss = tf.Print(self.temporal_difference_loss, [self.temporal_difference_loss], 'temporal_difference_loss')
     with tf.variable_scope("optimiser"):
       #optimizer = tf.train.AdamOptimizer(learning_rate)
-      optimizer = tf.train.GradientDescentOptimizer(learning_rate)
-      gradients = optimizer.compute_gradients(self.temporal_difference_loss)
+      optimiser = tf.train.GradientDescentOptimizer(learning_rate)
+      gradients = optimiser.compute_gradients(self.temporal_difference_loss)
       for i, (gradient, variable) in enumerate(gradients):
         if gradient is None:  # these are the stop gradient cases; ignore them
           continue
@@ -230,7 +230,7 @@ class CriticNetwork(base_network.Network):
           gradient = tf.clip_by_norm(gradient, gradient_clip_norm)
 #        gradient = tf.Print(gradient, [util.l2_norm(gradient)], "critic gradient %d l2_norm " % i)
         gradients[i] = (gradient, variable)
-      self.train_op = optimizer.apply_gradients(gradients)
+      self.train_op = optimiser.apply_gradients(gradients)
 
   def q_gradients_wrt_actions(self):
     """ gradients for the q.value w.r.t just input_action; used for actor training"""
@@ -438,6 +438,8 @@ def main():
       saver_util = util.SaverUtil(sess, opts.ckpt_dir, opts.ckpt_freq)
     else:
       sess.run(tf.initialize_all_variables())
+    for v in tf.all_variables():
+      print >>sys.stderr, v.name, v.get_shape()
 
     # now that we've either init'd from scratch, or loaded up a checkpoint,
     # we can hook together target networks

@@ -75,7 +75,6 @@ class ValueNetwork(base_network.Network):
     # since state is keep in a tf variable we keep track of the variable itself
     # as well as an indexing placeholder
     self.input_state = input_state
-    print >>sys.stderr, "ValueNetwork input_state", input_state.get_shape()
     self.input_state_idx = input_state_idx
 
     with tf.variable_scope(namespace):
@@ -195,8 +194,8 @@ class NafNetwork(base_network.Network):
       self.loss = tf.reduce_mean(tf.pow(self.q_value - self.target_y, 2))
       with tf.variable_scope("optimiser"):
         # calc gradients
-        optimizer = tf.train.GradientDescentOptimizer(opts.learning_rate)
-        gradients = optimizer.compute_gradients(self.loss)
+        optimiser = tf.train.GradientDescentOptimizer(opts.learning_rate)
+        gradients = optimiser.compute_gradients(self.loss)
 
         # drop None gradients (from stop gradient cases)
 #        tmp = []
@@ -219,7 +218,7 @@ class NafNetwork(base_network.Network):
                                        "gradient %s l2_norm " % variable.name), variable)
 
         # apply
-        self.train_op = optimizer.apply_gradients(gradients)
+        self.train_op = optimiser.apply_gradients(gradients)
 
       # sanity checks (in the dependent order)
       checks = []
@@ -417,6 +416,8 @@ def main():
       saver_util = util.SaverUtil(sess, opts.ckpt_dir, opts.ckpt_freq)
     else:
       sess.run(tf.initialize_all_variables())
+    for v in tf.all_variables():
+      print >>sys.stderr, v.name, v.get_shape()
 
     # now that we've either init'd from scratch, or loaded up a checkpoint,
     # we can hook together target networks
