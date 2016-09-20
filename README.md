@@ -161,12 +161,16 @@ result visually (click through for video)
 
 ### low dimensional continuous control with normalised advantage functions
 
+running now
+
 ```
 ./naf_cartpole.py \
  --max-num-actions=1000000
 ```
 
 ### high dimensional continuous control with normalised advantage functions
+
+running now
 
 ```
 ./naf_cartpole.py \
