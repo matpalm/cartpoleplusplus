@@ -47,7 +47,7 @@ parser.add_argument('--action-noise-sigma', type=float, default=0.2,
 bullet_cartpole.add_opts(parser)
 opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
-assert not opts.use_raw_pixels, "TODO: add convnet from ddpg here"
+
 
 # TODO: if we import slim _before_ building cartpole env we can't start bullet with GL gui o_O
 env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=False)
@@ -66,6 +66,7 @@ def set_dump_weights(signal, frame):
   DUMP_WEIGHTS = True
 signal.signal(signal.SIGUSR2, set_dump_weights)
 
+# TODO: move input_state_network into base_network
 
 class ValueNetwork(base_network.Network):
   """ Value network component of a NAF network. Created as seperate net because it has a target network."""
@@ -79,9 +80,17 @@ class ValueNetwork(base_network.Network):
     self.input_state_idx = input_state_idx
 
     with tf.variable_scope(namespace):
-      flat_input_state = slim.flatten(input_state, scope='flat')
-      value = self.hidden_layers_starting_at(flat_input_state, hidden_layer_config)
+      value = self.input_state_network(input_state)
       self.value = self.fully_connected(value, 1, activation_fn=None)  # (batch, 1)
+
+  def input_state_network(self, input_state):
+    if opts.use_raw_pixels:
+      conv_net = self.simple_conv_net_on(input_state)
+      hidden1 = slim.fully_connected(conv_net, 400, scope='hidden1')
+      return slim.fully_connected(hidden1, 50, scope='hidden2')
+    else:
+      flat_input_state = slim.flatten(input_state, scope='flat')
+      return self.hidden_layers_starting_at(flat_input_state, opts.hidden_layers)
 
   def value_given(self, state):
     return tf.get_default_session().run(self.value,
@@ -127,9 +136,7 @@ class NafNetwork(base_network.Network):
       # mu (output_action) is also a simple NN mapping input state -> action
       # this is our target op for inference (i.e. the value that maximises Q given input_state)
       with tf.variable_scope("output_action"):
-        flat_input_state = slim.flatten(self.input_state, scope='flat')
-        output_action = self.hidden_layers_starting_at(flat_input_state, 
-                                                       opts.hidden_layers)
+        output_action = self.input_state_network(self.input_state)
         self.output_action = self.fully_connected(output_action, action_dim,
                                                   activation_fn=tf.nn.tanh)  # (batch, action_dim)
 
@@ -146,10 +153,8 @@ class NafNetwork(base_network.Network):
       # first the L lower triangular values; a network on top of the input state
       num_l_values = (action_dim*(action_dim+1))/2
       with tf.variable_scope("l_values"):
-        flat_input_state = slim.flatten(self.input_state, scope='flat')
-        l_values = self.hidden_layers_starting_at(flat_input_state, opts.hidden_layers)
-        l_values = self.fully_connected(l_values, num_l_values,
-                                        activation_fn=None)
+        l_values = self.input_state_network(self.input_state)
+        l_values = self.fully_connected(l_values, num_l_values, activation_fn=None)
       # we will convert these l_values into a matrix one row at a time.
       rows = []
 
@@ -219,6 +224,15 @@ class NafNetwork(base_network.Network):
       actions[0] += self.exploration_noise.sample()
       actions = np.clip(1, -1, actions)  # action output is _always_ (-1, 1)
     return actions
+
+  def input_state_network(self, input_state):
+    if opts.use_raw_pixels:
+      conv_net = self.simple_conv_net_on(input_state)
+      hidden1 = slim.fully_connected(conv_net, 400, scope='hidden1')
+      return slim.fully_connected(hidden1, 50, scope='hidden2')
+    else:
+      flat_input_state = slim.flatten(input_state, scope='flat')
+      return self.hidden_layers_starting_at(flat_input_state, opts.hidden_layers)
 
   def train(self, batch):
     tf.get_default_session().run([self.check_numerics, self.train_op],
