@@ -86,7 +86,7 @@ $ ./random_action_agent.py --initial-force=55 --actions="0,1,2,3,4" --num-eval=1
 [  3.    5.9   7.    7.7   8.    9.   10.   11.   13.   15.   32. ]
 ```
 
-### training a dqn
+### discrete control with a deep q network
 
 ```
 $ ./dqn_cartpole.py \
@@ -115,7 +115,7 @@ $ ./dqn_cartpole.py \
  --num-train=0 --num-eval=100
 ```
 
-### training using likelihood ratio policy gradient
+### discrete control with likelihood ratio policy gradient
 
 policy gradient nails it
 
@@ -135,12 +135,7 @@ result visually (click through for video)
 
 [![link](https://img.youtube.com/vi/aricda9gs2I/0.jpg)](https://www.youtube.com/watch?v=aricda9gs2I)
 
-## continuous control version
-
-* 2d action; force to apply on cart in x & y directions
-* +1 base reward for each step pole is up. up to an additional +4 as force applied tends to 0.
-
-### training using deep deterministic policy gradient
+### continuous control with deep deterministic policy gradient
 
 ```
 ./ddpg_cartpole.py \
@@ -164,6 +159,27 @@ result visually (click through for video)
 
 [![link](https://img.youtube.com/vi/8X05GA5ZKvQ/0.jpg)](https://www.youtube.com/watch?v=8X05GA5ZKvQ)
 
+### low dimensional continuous control with normalised advantage functions
+
+```
+./naf_cartpole.py \
+ --max-num-actions=1000000
+```
+
+### high dimensional continuous control with normalised advantage functions
+
+```
+./naf_cartpole.py \
+ --use-raw-pixels \
+ --max-num-actions=1000000
+```
+
+## TODOS
+
+* option to share conv stacks (eg in naf where there are three)
+* some tuning, haven't done anything beyond picking random values
+* best practices for networks; processed inputs, batch norm, dropout, etc
+* switch back to async training (as in drivebot project)
 
 ## general utils
 
