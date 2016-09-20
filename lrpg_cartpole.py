@@ -129,34 +129,32 @@ class LikelihoodRatioPolicyGradientAgent(base_network.Network):
       # apply
       self.train_op = optimiser.apply_gradients(gradients)
 
-  def sample_action_given(self, observation, sampling):
+  def sample_action_given(self, observation, doing_eval=False):
     """ sample one action given observation"""
-    if not sampling:
-      # pure argmax eval
-      am, sm = tf.get_default_session().run([self.action_argmax, self.debug_softmax],
+    if doing_eval:
+      sao, sm = tf.get_default_session().run([self.sampled_action_op, self.debug_softmax],
                                              feed_dict={self.observations: [observation]})
-      print "EVAL sm ", sm, "argmax", am[0]
-      return am[0]
+      print "EVAL sm ", sm, "action", sao
+      return sao
 
     # epilson greedy "noise" will do for this simple case..
-    if (np.random.random() < 0.1):
+    if np.random.random() < 0.1:
       return self.env.action_space.sample()
 
     # sample from logits
     return tf.get_default_session().run(self.sampled_action_op,
                                         feed_dict={self.observations: [observation]})
 
-  def rollout(self, sampling=True):
+
+  def rollout(self, doing_eval=False):
     """ run one episode collecting observations, actions and advantages"""
     observations, actions, rewards = [], [], []
     observation = self.env.reset()
     done = False
     while not done:
       observations.append(observation)
-      action = self.sample_action_given(observation, sampling)
-      if action == 5:
-        print >>sys.stderr, "FAIL! (multinomial logits sampling bug?)"
-        action = 0
+      action = self.sample_action_given(observation, doing_eval)
+      assert action != 5, "FAIL! (multinomial logits sampling bug?"
       observation, reward, done, _ = self.env.step(action)
       actions.append(action)
       rewards.append(reward)
@@ -242,7 +240,7 @@ class LikelihoodRatioPolicyGradientAgent(base_network.Network):
 
   def run_eval(self, num_episodes, add_noise=False):
     for _ in xrange(num_episodes):
-      _, _, rewards = self.rollout(sampling=False)
+      _, _, rewards = self.rollout(doing_eval=True)
       print sum(rewards)
 
   def debug_dump_network_weights(self):
