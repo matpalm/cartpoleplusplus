@@ -170,13 +170,13 @@ running now
 
 ### high dimensional continuous control with normalised advantage functions
 
-running now
-
 ```
 ./naf_cartpole.py \
  --use-raw-pixels \
  --max-num-actions=1000000
 ```
+
+does OK, but not perfect yet.
 
 ## TODOS
 
