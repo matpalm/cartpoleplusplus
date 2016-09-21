@@ -193,7 +193,6 @@ class NafNetwork(base_network.Network):
       self.q_value = value_net.value + self.advantage
 
       # target y is reward + discounted target value
-      # TODO: pull discount out
       self.target_y = self.reward + (self.terminal_mask * opts.discount * target_value_net.value)
       self.target_y = tf.stop_gradient(self.target_y)
 
