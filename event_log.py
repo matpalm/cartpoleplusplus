@@ -88,6 +88,8 @@ if __name__ == "__main__":
                       help="if set only process these specific episodes (comma separated list)")
   parser.add_argument('--img-output-dir', type=str, default=None,
                       help="if set output all renders to this DIR/e_NUM/s_NUM.png")
+  parser.add_argument('--img-debug-overlay', action='store_true',
+                      help="if set overlay image with debug info")
   # TODO args for episode range
   opts = parser.parse_args()
 
@@ -117,18 +119,19 @@ if __name__ == "__main__":
         for state_id, state in enumerate(event.state):
           # open RGB png in an image canvas
           img = Image.open(StringIO.StringIO(state.render.png_bytes))
-          canvas = ImageDraw.Draw(img)
-          # draw episode and event number in top left
-          canvas.text((0, 0), "%d %d" % (episode_id, event_id), fill="black")
-          # draw simple fx/fy representation in bottom right...
-          # a bounding box
-          bx, by, bw = 40, 40, 10
-          canvas.line((bx-bw,by-bw, bx+bw,by-bw, bx+bw,by+bw, bx-bw,by+bw, bx-bw,by-bw), fill="black")
-          # then a simple fx/fy line
-          fx, fy = event.action[0], event.action[1]
-          canvas.line((bx,by, bx+(fx*bw), by+(fy*bw)), fill="black")
+          if opts.img_debug_overlay:
+            canvas = ImageDraw.Draw(img)
+            # draw episode and event number in top left
+            canvas.text((0, 0), "%d %d" % (episode_id, event_id), fill="black")
+            # draw simple fx/fy representation in bottom right...
+            # a bounding box
+            bx, by, bw = 40, 40, 10
+            canvas.line((bx-bw,by-bw, bx+bw,by-bw, bx+bw,by+bw, bx-bw,by+bw, bx-bw,by-bw), fill="black")
+            # then a simple fx/fy line
+            fx, fy = event.action[0], event.action[1]
+            canvas.line((bx,by, bx+(fx*bw), by+(fy*bw)), fill="black")
           # write it out
-#          img = img.resize((200, 200))
+          img = img.resize((200, 200))
           filename = "%s/ev_%05d_r%d.png" % (dir, event_id, state_id)
           img.save(filename)
     if opts.max_process is not None and e_id+1 >= opts.max_process:
