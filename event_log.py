@@ -15,7 +15,6 @@ def png_to_rgb(png_bytes):
   rgba = plt.imread(StringIO.StringIO(png_bytes))
   return rgba[:,:,:3]
 
-
 class EventLog(object):
 
   def __init__(self, path):
@@ -83,7 +82,6 @@ if __name__ == "__main__":
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument('--log-file', type=str, default=None)
   parser.add_argument('--echo', action='store_true', help="write event to stdout")
-  parser.add_argument('--max-process', type=int, help="if set only process this many")
   parser.add_argument('--episodes', type=str, default=None,
                       help="if set only process these specific episodes (comma separated list)")
   parser.add_argument('--img-output-dir', type=str, default=None,
@@ -134,8 +132,6 @@ if __name__ == "__main__":
           img = img.resize((200, 200))
           filename = "%s/ev_%05d_r%d.png" % (dir, event_id, state_id)
           img.save(filename)
-    if opts.max_process is not None and e_id+1 >= opts.max_process:
-      break
   print >>sys.stderr, "read", total_num_read_episodes, "episodes for a total of", total_num_read_events, "events"
 
 
