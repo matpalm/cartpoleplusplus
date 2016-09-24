@@ -32,6 +32,10 @@ parser.add_argument('--batches-per-step', type=int, default=5,
 parser.add_argument('--target-update-rate', type=float, default=0.0001,
                     help="affine combo for updating target networks each time we run a training batch")
 # TODO params per value, P, output_action networks?
+parser.add_argument('--share-input-state-representation', action='store_true',
+                    help="if set we have one network for processing input state that is shared between" +
+                          " value, l_value and output_action networks. if not set each net has it's own" +
+                          " network.")
 parser.add_argument('--hidden-layers', type=str, default="100,50", help="hidden layer sizes")
 parser.add_argument('--learning-rate', type=float, default=0.001, help="learning rate")
 parser.add_argument('--gradient-clip', type=float, default=5, help="do global clipping to this norm")
@@ -66,7 +70,6 @@ def set_dump_weights(signal, frame):
   DUMP_WEIGHTS = True
 signal.signal(signal.SIGUSR2, set_dump_weights)
 
-# TODO: move input_state_network into base_network
 
 class ValueNetwork(base_network.Network):
   """ Value network component of a NAF network. Created as seperate net because it has a target network."""
@@ -80,17 +83,14 @@ class ValueNetwork(base_network.Network):
     self.input_state_idx = input_state_idx
 
     with tf.variable_scope(namespace):
-      value = self.input_state_network(input_state)
-      self.value = self.fully_connected(value, 1, activation_fn=None)  # (batch, 1)
-
-  def input_state_network(self, input_state):
-    if opts.use_raw_pixels:
-      conv_net = self.simple_conv_net_on(input_state)
-      hidden1 = slim.fully_connected(conv_net, 400, scope='hidden1')
-      return slim.fully_connected(hidden1, 50, scope='hidden2')
-    else:
-      flat_input_state = slim.flatten(input_state, scope='flat')
-      return self.hidden_layers_starting_at(flat_input_state, opts.hidden_layers)
+      # expose self.input_state_representation since it will be the network "shared"
+      # by l_value and output_action network when running --share-input-state-representation
+      self.input_state_representation = self.input_state_network(input_state, opts)
+      self.value = slim.fully_connected(scope='fc',
+                                        inputs=self.input_state_representation,
+                                        num_outputs=1,
+                                        weights_regularizer=tf.contrib.layers.l2_regularizer(0.01),
+                                        activation_fn=None)  # (batch, 1)
 
   def value_given(self, state):
     return tf.get_default_session().run(self.value,
@@ -136,8 +136,14 @@ class NafNetwork(base_network.Network):
       # mu (output_action) is also a simple NN mapping input state -> action
       # this is our target op for inference (i.e. the value that maximises Q given input_state)
       with tf.variable_scope("output_action"):
-        output_action = self.input_state_network(self.input_state)
-        self.output_action = self.fully_connected(output_action, action_dim,
+        if opts.share_input_state_representation:
+          input_representation = value_net.input_state_representation
+        else:
+          input_representation = self.input_state_network(self.input_state, opts)
+        self.output_action = slim.fully_connected(scope='fc',
+                                                  inputs=input_representation,
+                                                  num_outputs=action_dim,
+                                                  weights_regularizer=tf.contrib.layers.l2_regularizer(0.01),
                                                   activation_fn=tf.nn.tanh)  # (batch, action_dim)
 
       # A (advantage) is a bit more work and has three components...
@@ -153,8 +159,16 @@ class NafNetwork(base_network.Network):
       # first the L lower triangular values; a network on top of the input state
       num_l_values = (action_dim*(action_dim+1))/2
       with tf.variable_scope("l_values"):
-        l_values = self.input_state_network(self.input_state)
-        l_values = self.fully_connected(l_values, num_l_values, activation_fn=None)
+        if opts.share_input_state_representation:
+          input_representation = value_net.input_state_representation
+        else:
+          input_representation = self.input_state_network(self.input_state, opts)
+        l_values = slim.fully_connected(scope='fc',
+                                        inputs=input_representation,
+                                        num_outputs=num_l_values,
+                                        weights_regularizer=tf.contrib.layers.l2_regularizer(0.01),
+                                        activation_fn=None)
+
       # we will convert these l_values into a matrix one row at a time.
       rows = []
 
@@ -193,6 +207,7 @@ class NafNetwork(base_network.Network):
       self.q_value = value_net.value + self.advantage
 
       # target y is reward + discounted target value
+      # TODO: pull discount out
       self.target_y = self.reward + (self.terminal_mask * opts.discount * target_value_net.value)
       self.target_y = tf.stop_gradient(self.target_y)
 
@@ -223,15 +238,6 @@ class NafNetwork(base_network.Network):
       actions[0] += self.exploration_noise.sample()
       actions = np.clip(1, -1, actions)  # action output is _always_ (-1, 1)
     return actions
-
-  def input_state_network(self, input_state):
-    if opts.use_raw_pixels:
-      conv_net = self.simple_conv_net_on(input_state)
-      hidden1 = slim.fully_connected(conv_net, 400, scope='hidden1')
-      return slim.fully_connected(hidden1, 50, scope='hidden2')
-    else:
-      flat_input_state = slim.flatten(input_state, scope='flat')
-      return self.hidden_layers_starting_at(flat_input_state, opts.hidden_layers)
 
   def train(self, batch):
     tf.get_default_session().run([self.check_numerics, self.train_op],
@@ -272,6 +278,8 @@ class NormalizedAdvantageFunctionAgent(object):
 
     # initialise base models for value & naf networks.
     # value subportion of net is explicitly created seperate because it has a target network
+    # note: in the case of --share-input-state-representation the input state network of the value_net
+    #       will be reused by the naf.l_value and naf.output_actions net
     self.value_net = ValueNetwork("value", s1, s1_idx,
                                   opts.hidden_layers)
     self.target_value_net = ValueNetwork("target_value", s2, s2_idx,

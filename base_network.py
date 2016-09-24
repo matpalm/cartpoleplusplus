@@ -46,10 +46,6 @@ class Network(object):
         v.append(var)
     return v
 
-  def l2(self):
-    # TODO: config
-    return tf.contrib.layers.l2_regularizer(0.01)
-
   def hidden_layers_starting_at(self, layer, config):
     layer_sizes = map(int, config.split(","))
     assert len(layer_sizes) > 0
@@ -57,16 +53,9 @@ class Network(object):
       layer = slim.fully_connected(scope="h%d" % i,
                                   inputs=layer,
                                   num_outputs=size,
-                                  weights_regularizer=self.l2(),
+                                  weights_regularizer=tf.contrib.layers.l2_regularizer(0.01),
                                   activation_fn=tf.nn.relu)
     return layer
-
-  def fully_connected(self, layer, num_outputs, activation_fn=None):
-    return slim.fully_connected(scope="fc",
-                                inputs=layer,
-                                num_outputs=num_outputs,
-                                weights_regularizer=self.l2(),
-                                activation_fn=activation_fn)
 
   def simple_conv_net_on(self, input_layer):
     # TODO: config like hidden_layers_starting_at; whitenen input? batch norm? etc...
@@ -75,3 +64,13 @@ class Network(object):
     model = slim.conv2d(model, num_outputs=20, kernel_size=[5, 5], scope='conv2')
     model = slim.max_pool2d(model, kernel_size=[2, 2], scope='pool2')
     return slim.flatten(model, scope='flat')
+
+  def input_state_network(self, input_state, opts):
+    # TODO: use in lrpg and ddpg too
+    if opts.use_raw_pixels:
+      conv_net = self.simple_conv_net_on(input_state)
+      hidden1 = slim.fully_connected(conv_net, 400, scope='hidden1')
+      return slim.fully_connected(hidden1, 50, scope='hidden2')
+    else:
+      flat_input_state = slim.flatten(input_state, scope='flat')
+      return self.hidden_layers_starting_at(flat_input_state, opts.hidden_layers)
