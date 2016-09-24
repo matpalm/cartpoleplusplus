@@ -1,4 +1,5 @@
 import collections
+import event_log
 import numpy as np
 import sys
 import tensorflow as tf
@@ -12,6 +13,7 @@ class ReplayMemory(object):
     assert load_factor >= 1.5, "load_factor has to be at least 1.5"
     self.sess = sess
     self.buffer_size = buffer_size
+    self.state_shape = state_shape
     self.insert = 0
     self.full = False
 
@@ -53,6 +55,42 @@ class ReplayMemory(object):
 
     # some stats
     self.stats = collections.Counter()
+
+  def reset_from_event_log(self, event_log_file):
+    """ resets contents from event_log. 
+        assumes event_log will fit in main memory.
+        only uses first self.buffer_size entries of log"""
+    # see _add method for more info 
+    elr = event_log.EventLogReader(event_log_file)
+    new_state = np.empty(self.state_buffer_size)
+    state_idx = 0
+    insert = 0
+    for episode in elr.entries():
+      first_event = True
+      for event in episode.event:
+        if first_event:
+          first_event = False
+        else:
+          pass
+        assert len(event.state) == 2
+        if len(self.state_1_idx) >= self.buffer_size - 2: break
+        new_state[state_idx] = event.state[0]
+        new_state[state_idx+1] = event.state[1]
+        self.state_1_idx[insert] = state_idx
+        self.state_2_idx[insert] = state_idx + 1
+        state_idx += 2
+        self.action[insert] = event.action  # array
+        self.reward[insert] = event.reward
+        self.terminal_mask[insert] = 0.0 if event.is_terminal else 1.0
+        
+    # assign variable in one hit.
+    self.sess.run(self.state.assign(new_state))
+    
+    self.insert = insert
+    self.full = self.insert == self.buffer_size
+    self.state_free_slots = list(range(insert, self.state_buffer_size))
+    self.stats = collections.Counter()
+
 
   def batch_ops(self):
     """ returns placeholders for idxs (and corresponding opts gathering over those idxs) for state1 and state2"""
