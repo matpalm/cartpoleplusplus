@@ -5,16 +5,34 @@ simulated using [bullet physics](http://bulletphysics.org/) where the pole _isn'
 
 ![cartpole](cartpole.png)
 
-this repo contains a [gym env](https://gym.openai.com/) for this cartpole as well as example policies trained with ...
+this repo contains a [gym env](https://gym.openai.com/) for this cartpole as well as implementations for training with ...
 
-* a hand rolled likelihood ratio policy gradient method ( [lrpg_cartpole.py](lrpg_cartpole.py) ) for the discrete control version
-* a hand rolled [deep deterministic policy gradient method](http://arxiv.org/abs/1509.02971) ( [ddpg_cartpole.py](ddpg_cartpole.py) ) for the continuous control version
+* likelihood ratio policy gradients ( [lrpg_cartpole.py](lrpg_cartpole.py) ) for the discrete control version
+* [deep deterministic policy gradients](http://arxiv.org/abs/1509.02971) ( [ddpg_cartpole.py](ddpg_cartpole.py) ) for the continuous control version
+* [normalised advantage functions](https://arxiv.org/abs/1603.00748) ( [naf_cartpole.py](naf_cartpole.py) ) also for the continuous control version
 
 we also train a [deep q network](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf) from [keras-rl](https://github.com/matthiasplappert/keras-rl) as an externally implemented baseline.
 
-there are two state representations available; a low dimensional one based on the cart & pole pose and a high dimensional one based on raw pixels.
+for more info see [the blog post](http://matpalm.com/blog/cartpole_plus_plus/)
 
-in both representations we use the idea of action repeats; per env.step we apply the choosen action 5 times, take a state snapshot, apply the action another 5 times and take another snapshot. the delta between these two snapshots provides enough information to infer velocity (if the learning algorithm finds that useful to do )
+## general environment
+
+episodes are initialised with the pole standing upright and receiving a small push in a random direction
+
+episodes are terminated when either the pole further than a set angle from vertical or 200 steps have passed
+
+there are two state representations available; a low dimensional one based on the cart & pole pose and a high dimensional one based on raw pixels (see below)
+
+there are two options for controlling the cart; a discrete and continuous method (see below)
+
+reward is simply 1.0 for each step in the episode
+
+### states
+
+in both low and high dimensional representations we use the idea of action repeats; 
+per env.step we apply the choosen action 5 times, take a state snapshot, apply the action another 5 times
+and take another snapshot. the delta between these two snapshots provides enough information to infer velocity
+(if the learning algorithm finds that useful to do )
 
 observation state in the low dimensional case is shaped `(2, 2, 7)`
 * axis=0 represents the two snapshots; 0=first, 1=second
@@ -22,30 +40,36 @@ observation state in the low dimensional case is shaped `(2, 2, 7)`
 * axis=2 is the 7d pose; 3d postition + 4d quaternion orientation
 * this representation is usually just flattened to (28,) when used
 
-the high dimensional state is `(50, 50, 6)`
+the high dimensional state is `(50, 50, 6)` (or whatever width/height your GPU can handle :)
 * `[:,:,0:3]` (the first three channels) is the RGB of a 50x50 render at first snapshot
 * `[:,:,3:6]` (the second three channels) is the RGB of a 50x50 render at the second snapshot
 * TODO: i concatted in the channel axis for ease of use with conv2d but conv3d is available and i should switch...
 
 ![eg_render](eg_render.png)
 
-in general see [the blog post](http://matpalm.com/blog/cartpole_plus_plus/) for more info...
+### actions
 
-## discrete control version
+in the discrete case the actions are push cart left, right, up, down or do nothing.
 
-* 5 actions; go left, right, up, down, do nothing
-* +1 reward for each step pole is up.
+in the continuous case the action is a 2d value representing the push force in x and y direction (-1 to 1)
+
+### rewards 
+
+in all cases we give a reward of 1 for each step and terminate the episode when either 200 steps have passed or 
+the pole has fallen too far from the z-axis
+
+## agents
 
 ### random agent
 
-example behaviour of random action agent (click through for video)
+we use a random action agent (click through for video) to sanity check the setup.
+add `--gui` to any of these to get a rendering
 
 [![link](https://img.youtube.com/vi/buSAT-3Q8Zs/0.jpg)](https://www.youtube.com/watch?v=buSAT-3Q8Zs)
 
 ```
-# some sanity checks...
-
-# no initial push and taking no action (action=0) results in episode timeout of 200 steps
+# no initial push and taking no action (action=0) results in episode timeout of 200 steps.
+# this is a check of the stability of the pole under no forces
 $ ./random_action_agent.py --initial-force=0 --actions="0" --num-eval=100 | ./deciles.py 
 [ 200.  200.  200.  200.  200.  200.  200.  200.  200.  200.  200.]
 
@@ -62,7 +86,7 @@ $ ./random_action_agent.py --initial-force=55 --actions="0,1,2,3,4" --num-eval=1
 [  3.    5.9   7.    7.7   8.    9.   10.   11.   13.   15.   32. ]
 ```
 
-### training a dqn
+### discrete control with a deep q network
 
 ```
 $ ./dqn_cartpole.py \
@@ -91,7 +115,7 @@ $ ./dqn_cartpole.py \
  --num-train=0 --num-eval=100
 ```
 
-### training using likelihood ratio policy gradient
+### discrete control with likelihood ratio policy gradient
 
 policy gradient nails it
 
@@ -111,12 +135,7 @@ result visually (click through for video)
 
 [![link](https://img.youtube.com/vi/aricda9gs2I/0.jpg)](https://www.youtube.com/watch?v=aricda9gs2I)
 
-## continuous control version
-
-* 2d action; force to apply on cart in x & y directions
-* +1 base reward for each step pole is up. up to an additional +4 as force applied tends to 0.
-
-### training using deep deterministic policy gradient
+### continuous control with deep deterministic policy gradient
 
 ```
 ./ddpg_cartpole.py \
@@ -140,6 +159,31 @@ result visually (click through for video)
 
 [![link](https://img.youtube.com/vi/8X05GA5ZKvQ/0.jpg)](https://www.youtube.com/watch?v=8X05GA5ZKvQ)
 
+### low dimensional continuous control with normalised advantage functions
+
+running now
+
+```
+./naf_cartpole.py \
+ --max-num-actions=1000000
+```
+
+### high dimensional continuous control with normalised advantage functions
+
+```
+./naf_cartpole.py \
+ --use-raw-pixels \
+ --max-num-actions=1000000
+```
+
+does OK, but not perfect yet.
+
+## TODOS
+
+* option to share conv stacks (eg in naf where there are three)
+* some tuning, haven't done anything beyond picking random values
+* best practices for networks; processed inputs, batch norm, dropout, etc
+* switch back to async training (as in drivebot project)
 
 ## general utils
 

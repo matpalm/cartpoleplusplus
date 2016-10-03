@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import argparse
 import bullet_cartpole
+import collections
 import datetime
 import gym
 import json
@@ -9,7 +10,6 @@ import replay_memory
 import signal
 import sys
 import tensorflow as tf
-import tensorflow.contrib.slim as slim
 import time
 import util
 
@@ -32,14 +32,12 @@ parser.add_argument('--batches-per-step', type=int, default=5,
 parser.add_argument('--target-update-rate', type=float, default=0.0001,
                     help="affine combo for updating target networks each time we run a training batch")
 parser.add_argument('--actor-hidden-layers', type=str, default="100,100,50", help="actor hidden layer sizes")
-parser.add_argument('--critic-hidden-layers', type=str, default="100,100,50", help="actor hidden layer sizes")
+parser.add_argument('--critic-hidden-layers', type=str, default="100,100,50", help="critic hidden layer sizes")
 parser.add_argument('--actor-learning-rate', type=float, default=0.001, help="learning rate for actor")
 parser.add_argument('--critic-learning-rate', type=float, default=0.01, help="learning rate for critic")
-parser.add_argument('--actor-gradient-clip', type=float, default=None, help="clip actor gradients at this l2 norm")
-parser.add_argument('--critic-gradient-clip', type=float, default=None, help="clip critic gradients at this l2 norm")
-parser.add_argument('--actor-activation-init-magnitude', type=float, default=0.001,
-                    help="weight magnitude for actor final activation. explicitly near zero to force near zero predictions initially")
-parser.add_argument('--critic-bellman-discount', type=float, default=0.99, help="discount for RHS of critic bellman equation update")
+parser.add_argument('--gradient-clip', type=float, default=None, help="clip gradients at this l2 norm")
+parser.add_argument('--print-gradients', action='store_true', help="whether to verbose print all gradients and l2 norms")
+parser.add_argument('--discount', type=float, default=0.99, help="discount for RHS of critic bellman equation update")
 parser.add_argument('--replay-memory-size', type=int, default=22000, help="max size of replay memory")
 parser.add_argument('--replay-memory-burn-in', type=int, default=1000, help="dont train from replay memory until it reaches this size")
 parser.add_argument('--eval-action-noise', action='store_true', help="whether to use noise during eval")
@@ -50,8 +48,11 @@ parser.add_argument('--action-noise-sigma', type=float, default=0.2,
 bullet_cartpole.add_opts(parser)
 opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
-sys.stderr.write("first training at epoch %s\n" % (opts.batch_size * \
-                                                   opts.batches_per_step * 10))
+
+# TODO: if we import slim _before_ building cartpole env we can't start bullet with GL gui o_O
+env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=False)
+import base_network
+import tensorflow.contrib.slim as slim
 
 VERBOSE_DEBUG = False
 def toggle_verbose_debug(signal, frame):
@@ -65,82 +66,11 @@ def set_dump_weights(signal, frame):
   DUMP_WEIGHTS = True
 signal.signal(signal.SIGUSR2, set_dump_weights)
 
-class Network(object):
-  """Common class for actor/critic handling ops for making / updating target networks."""
 
-  def __init__(self, namespace):
-    self.namespace = namespace
-    self.target_update_op = None
-
-  def _create_variables_copy_op(self, source_namespace, affine_combo_coeff):
-    """create an op that does updates all vars in source_namespace to target_namespace"""
-    assert affine_combo_coeff >= 0.0 and affine_combo_coeff <= 1.0
-    assign_ops = []
-    with tf.variable_scope(self.namespace, reuse=True):
-      for src_var in tf.all_variables():
-        if not src_var.name.startswith(source_namespace):
-          continue
-        target_var_name = src_var.name.replace(source_namespace+"/", "").replace(":0", "")
-        target_var = tf.get_variable(target_var_name)
-        assert src_var.get_shape() == target_var.get_shape()
-        assign_ops.append(target_var.assign_sub(affine_combo_coeff * (target_var - src_var)))
-    single_assign_op = tf.group(*assign_ops)
-    return single_assign_op
-
-  def set_as_target_network_for(self, source_network, target_update_rate):
-    """Create an op that will update this networks weights based on a source_network"""
-    # first, as a one off, copy _all_ variables across.
-    # i.e. initial target network will be a copy of source network.
-    op = self._create_variables_copy_op(source_network.namespace, affine_combo_coeff=1.0)
-    tf.get_default_session().run(op)
-    # next build target update op for running later during training
-    self.update_weights_op = self._create_variables_copy_op(source_network.namespace,
-                                                           target_update_rate)
-
-  def update_weights(self):
-    """called during training to update target network."""
-    if self.update_weights_op is None:
-      raise Exception("not a target network? or set_source_network not yet called")
-    return tf.get_default_session().run(self.update_weights_op)
-
-  def trainable_model_vars(self):
-    v = []
-    for var in tf.all_variables():
-      if var.name.startswith(self.namespace):
-        v.append(var)
-    return v
-
-  def l2(self):
-    # TODO: config
-    return tf.contrib.layers.l2_regularizer(0.01)
-
-  def hidden_layers_starting_at(self, layer, config):
-    layer_sizes = map(int, config.split(","))
-    assert len(layer_sizes) > 0
-    for i, size in enumerate(layer_sizes):
-      layer = slim.fully_connected(scope="h%d" % i,
-                                  inputs=layer,
-                                  num_outputs=size,
-                                  weights_regularizer=self.l2(),
-                                  activation_fn=tf.nn.relu)
-    return layer
-
-  def simple_conv_net_on(self, input_layer):
-    # TODO: config like hidden_layers_starting_at; whitenen input? batch norm? etc...
-    model = slim.conv2d(input_layer, num_outputs=30, kernel_size=[5, 5], scope='conv1')
-    model = slim.max_pool2d(model, kernel_size=[2, 2], scope='pool1')
-    model = slim.conv2d(model, num_outputs=20, kernel_size=[5, 5], scope='conv2')
-    model = slim.max_pool2d(model, kernel_size=[2, 2], scope='pool2')
-    return slim.flatten(model, scope='flat')
-
-class ActorNetwork(Network):
+class ActorNetwork(base_network.Network):
   """ the actor represents the learnt policy mapping states to actions"""
 
-  def __init__(self, namespace, input_state, input_state_idx, action_dim,
-               hidden_layer_config,
-               explore_theta=0.0, explore_sigma=0.0,
-               actor_activation_init_magnitude=1e-3,
-               use_raw_pixels=False):
+  def __init__(self, namespace, input_state, input_state_idx, action_dim):
     super(ActorNetwork, self).__init__(namespace)
 
     # since state is keep in a tf variable we keep track of the variable itself
@@ -148,33 +78,31 @@ class ActorNetwork(Network):
     self.input_state = input_state
     self.input_state_idx = input_state_idx
 
-    self.exploration_noise = util.OrnsteinUhlenbeckNoise(action_dim, explore_theta, explore_sigma)
+    self.exploration_noise = util.OrnsteinUhlenbeckNoise(action_dim, 
+                                                         opts.action_noise_theta,
+                                                         opts.action_noise_sigma)
 
     with tf.variable_scope(namespace):
-      if use_raw_pixels:
+      if opts.use_raw_pixels:
         # simple conv net with one hidden layer on top
-        conv_net = self.simple_conv_net_on(input_state)
-        final_hidden = slim.fully_connected(conv_net, 50, scope='hidden1')
+        conv_net = self.simple_conv_net_on(self.input_state)
+        hidden1 = slim.fully_connected(conv_net, 400, scope='hidden1')
+        final_hidden = slim.fully_connected(hidden1, 50, scope='hidden2')
       else:
         # stack of hidden layers on flattened input; (batch,2,2,7) -> (batch,28)
         flat_input_state = slim.flatten(input_state, scope='flat')
         final_hidden = self.hidden_layers_starting_at(flat_input_state,
-                                                      hidden_layer_config)
+                                                      opts.actor_hidden_layers)
 
       # TODO: add dropout for both nets!
 
-      # action dim output. note: actors out is (-1, 1) and scaled in env as required.
-      weights_initializer = tf.random_uniform_initializer(-actor_activation_init_magnitude,
-                                                          actor_activation_init_magnitude)
-      # final
       self.output_action = slim.fully_connected(scope='output_action',
                                                 inputs=final_hidden,
                                                 num_outputs=action_dim,
-                                                weights_initializer=weights_initializer,
                                                 weights_regularizer=self.l2(),
                                                 activation_fn=tf.nn.tanh)
 
-  def init_ops_for_training(self, critic, learning_rate, gradient_clip_norm):
+  def init_ops_for_training(self, critic):
     # actors gradients are the gradients for it's output w.r.t it's vars using initial
     # gradients provided by critic. this requires that critic was init'd with an
     # input_action = actor.output_action (which is natural anyway)
@@ -183,29 +111,20 @@ class ActorNetwork(Network):
     # note that we negate the gradients from critic since we are trying to maximise
     # the q values (not minimise like a loss)
     with tf.variable_scope("optimiser"):
-      actor_gradients = tf.gradients(self.output_action,
-                                     self.trainable_model_vars(),
-                                     tf.neg(critic.q_gradients_wrt_actions()))
-      for i, gradient in enumerate(actor_gradients):
-        if gradient_clip_norm is not None:
-          gradient = tf.clip_by_norm(gradient, gradient_clip_norm)
-#        gradient = tf.Print(gradient, [util.l2_norm(gradient)], "actor gradient %d l2_norm pre " % i)
-        actor_gradients[i] = gradient
-#      optimiser = tf.train.AdamOptimizer(learning_rate)
-      optimiser = tf.train.GradientDescentOptimizer(learning_rate)
-      self.train_op = optimiser.apply_gradients(zip(actor_gradients,
-                                                    self.trainable_model_vars()))
+      gradients = tf.gradients(self.output_action,
+                               self.trainable_model_vars(),
+                               tf.neg(critic.q_gradients_wrt_actions()))
+      gradients = zip(gradients, self.trainable_model_vars())
+      # potentially clip and wrap with debugging
+      gradients = util.clip_and_debug_gradients(gradients, opts)
+      # apply
+      optimiser = tf.train.GradientDescentOptimizer(opts.actor_learning_rate)
+      self.train_op = optimiser.apply_gradients(gradients)
 
-  def action_given(self, state_idx=None, explicit_state=None, add_noise=False):
-    assert (state_idx is None) ^ (explicit_state is None)
-    if state_idx is not None:
-      # feed state_idx; state has to have been cached previously during training rollout.
-      actions = tf.get_default_session().run(self.output_action,
-                                             feed_dict={self.input_state_idx: [state_idx]})
-    else:
-      # feed explicitly provided state
-      actions = tf.get_default_session().run(self.output_action,
-                                             feed_dict={self.input_state: [explicit_state]})
+  def action_given(self, state, add_noise=False):
+    # feed explicitly provided state
+    actions = tf.get_default_session().run(self.output_action,
+                                           feed_dict={self.input_state: [state]})
 
     # NOTE: noise is added _outside_ tf graph. we do this simply because the noisy output
     # is never used for any part of computation graph required for online training. it's
@@ -223,13 +142,11 @@ class ActorNetwork(Network):
                                  feed_dict={self.input_state_idx: state_idx})
 
 
-class CriticNetwork(Network):
+class CriticNetwork(base_network.Network):
   """ the critic represents a mapping from state & actors action to a quality score."""
 
-  def __init__(self, namespace, actor, hidden_layer_config,
-               discount, use_raw_pixels=False):
+  def __init__(self, namespace, actor):
     super(CriticNetwork, self).__init__(namespace)
-    self.discount = discount  # bellman update discount  TODO: config!
 
     # input state to the critic is the _same_ state given to the actor.
     # input action to the critic is simply the output action of the actor.
@@ -243,22 +160,18 @@ class CriticNetwork(Network):
     self.input_action = tf.stop_gradient(actor.output_action)
 
     with tf.variable_scope(namespace):
-      if use_raw_pixels:
+      if opts.use_raw_pixels:
         conv_net = self.simple_conv_net_on(self.input_state)
-        hidden1 = slim.fully_connected(scope="hidden1",
-                                       inputs=conv_net,
-                                       num_outputs=50,
-                                       weights_regularizer=self.l2())
-        concat_inputs = tf.concat(1, [hidden1, self.input_action])
-        final_hidden = slim.fully_connected(scope="hidden2",
-                                            inputs=concat_inputs,
-                                            num_outputs=50)
+        hidden1 = slim.fully_connected(conv_net, 200, scope='hidden1')
+        hidden2 = slim.fully_connected(hidden1, 50, scope='hidden2')
+        concat_inputs = tf.concat(1, [hidden2, self.input_action])
+        final_hidden = slim.fully_connected(concat_inputs, 50, scope="hidden3")
       else:
         # stack of hidden layers on flattened input; (batch,2,2,7) -> (batch,28)
         flat_input_state = slim.flatten(self.input_state, scope='flat')
         concat_inputs = tf.concat(1, [flat_input_state, self.input_action])
         final_hidden = self.hidden_layers_starting_at(concat_inputs,
-                                                      hidden_layer_config)
+                                                      opts.critic_hidden_layers)
 
       # output from critic is a single q-value
       self.q_value = slim.fully_connected(scope='q_value',
@@ -267,7 +180,7 @@ class CriticNetwork(Network):
                                           weights_regularizer=self.l2(),
                                           activation_fn=None)
 
-  def init_ops_for_training(self, target_critic, learning_rate, gradient_clip_norm):
+  def init_ops_for_training(self, target_critic):
     # update critic using bellman equation; Q(s1, a) = reward + discount * Q(s2, A(s2))
 
     # left hand side of bellman is just q_value, but let's be explicit about it...
@@ -281,7 +194,7 @@ class CriticNetwork(Network):
                                         name="critic_terminal_mask")
     self.input_state_2 = target_critic.input_state
     self.input_state_2_idx = target_critic.input_state_idx
-    bellman_rhs = self.reward + (self.terminal_mask * self.discount * target_critic.q_value)
+    bellman_rhs = self.reward + (self.terminal_mask * opts.discount * target_critic.q_value)
 
     # note: since we are NOT training target networks we stop gradients flowing to them
     bellman_rhs = tf.stop_gradient(bellman_rhs)
@@ -290,31 +203,27 @@ class CriticNetwork(Network):
     # temporal difference we use a squared loss for optimisation and, as for actor, we
     # wrap optimiser in a namespace so it's not picked up by target network variable
     # handling.
-    temporal_difference = bellman_lhs - bellman_rhs
-    self.temporal_difference_loss = tf.reduce_mean(tf.pow(temporal_difference, 2))
+    self.temporal_difference = bellman_lhs - bellman_rhs
+    self.temporal_difference_loss = tf.reduce_mean(tf.pow(self.temporal_difference, 2))
 #    self.temporal_difference_loss = tf.Print(self.temporal_difference_loss, [self.temporal_difference_loss], 'temporal_difference_loss')
     with tf.variable_scope("optimiser"):
-      #optimizer = tf.train.AdamOptimizer(learning_rate)
-      optimizer = tf.train.GradientDescentOptimizer(learning_rate)
-      gradients = optimizer.compute_gradients(self.temporal_difference_loss)
-      for i, (gradient, variable) in enumerate(gradients):
-        if gradient is None:  # these are the stop gradient cases; ignore them
-          continue
-        if gradient_clip_norm is not None:
-          gradient = tf.clip_by_norm(gradient, gradient_clip_norm)
-#        gradient = tf.Print(gradient, [util.l2_norm(gradient)], "critic gradient %d l2_norm " % i)
-        gradients[i] = (gradient, variable)
-      self.train_op = optimizer.apply_gradients(gradients)
+      # calc gradients
+      optimiser = tf.train.GradientDescentOptimizer(opts.critic_learning_rate)
+      gradients = optimiser.compute_gradients(self.temporal_difference_loss)
+      # potentially clip and wrap with debugging tf.Print
+      gradients = util.clip_and_debug_gradients(gradients, opts)
+      # apply
+      self.train_op = optimiser.apply_gradients(gradients)
 
   def q_gradients_wrt_actions(self):
     """ gradients for the q.value w.r.t just input_action; used for actor training"""
     return tf.gradients(self.q_value, self.input_action)[0]
 
-  def debug_q_value_for(self, input_state, action=None):
-    feed_dict = {self.input_state: input_state}
-    if action is not None:
-      feed_dict[self.input_action] = action
-    return np.squeeze(tf.get_default_session().run(self.q_value, feed_dict=feed_dict))
+#  def debug_q_value_for(self, input_state, action=None):
+#    feed_dict = {self.input_state: input_state}
+#    if action is not None:
+#      feed_dict[self.input_action] = action
+#    return np.squeeze(tf.get_default_session().run(self.q_value, feed_dict=feed_dict))
 
   def train(self, batch):
     tf.get_default_session().run(self.train_op,
@@ -324,17 +233,19 @@ class CriticNetwork(Network):
                                             self.terminal_mask: batch.terminal_mask,
                                             self.input_state_2_idx: batch.state_2_idx})
 
-  def check_loss(self, state_1_idx, action, reward, terminal_mask, state_2_idx):
-    return tf.get_default_session().run(self.temporal_difference_loss,
-                                        feed_dict={self.input_state_idx: state_1_idx,
-                                                   self.input_action: action,
-                                                   self.reward: reward,
-                                                   self.terminal_mask: terminal_mask,
-                                                   self.input_state_2_idx: state_2_idx})
+  def check_loss(self, batch):
+    return tf.get_default_session().run([self.temporal_difference_loss, 
+                                         self.temporal_difference,
+                                         self.q_value],
+                                        feed_dict={self.input_state_idx: batch.state_1_idx,
+                                                   self.input_action: batch.action,
+                                                   self.reward: batch.reward,
+                                                   self.terminal_mask: batch.terminal_mask,
+                                                   self.input_state_2_idx: batch.state_2_idx})
 
 
 class DeepDeterministicPolicyGradientAgent(object):
-  def __init__(self, env, agent_opts):
+  def __init__(self, env):
     self.env = env
     state_shape = self.env.observation_space.shape
     action_dim = self.env.action_space.shape[1]
@@ -343,7 +254,7 @@ class DeepDeterministicPolicyGradientAgent(object):
     # this replay memory stores states in a Variable (ie potentially in gpu memory)
     # TODO: switch back to async training with multiple replicas (as in drivebot project)
     self.replay_memory = replay_memory.ReplayMemory(tf.get_default_session(),
-                                                    agent_opts.replay_memory_size,
+                                                    opts.replay_memory_size,
                                                     state_shape, action_dim)
 
     # in the --use-raw-pixels case states are very large so we want them stored in tf variable
@@ -353,33 +264,16 @@ class DeepDeterministicPolicyGradientAgent(object):
 
     # initialise base models for actor / critic and their corresponding target networks
     # target_actor is never used for online sampling so doesn't need explore noise.
-    self.actor = ActorNetwork("actor", s1, s1_idx, action_dim,
-                              agent_opts.actor_hidden_layers,
-                              agent_opts.action_noise_theta,
-                              agent_opts.action_noise_sigma,
-                              agent_opts.actor_activation_init_magnitude,
-                              agent_opts.use_raw_pixels)
-    self.critic = CriticNetwork("critic", self.actor,
-                                agent_opts.critic_hidden_layers,
-                                agent_opts.critic_bellman_discount,
-                                use_raw_pixels=agent_opts.use_raw_pixels)
-    self.target_actor = ActorNetwork("target_actor", s2, s2_idx, action_dim,
-                                     agent_opts.actor_hidden_layers,
-                                     use_raw_pixels=agent_opts.use_raw_pixels)
-    self.target_critic = CriticNetwork("target_critic", self.target_actor,
-                                       agent_opts.critic_hidden_layers,
-                                       agent_opts.critic_bellman_discount,
-                                       use_raw_pixels=agent_opts.use_raw_pixels)
+    self.actor = ActorNetwork("actor", s1, s1_idx, action_dim)
+    self.critic = CriticNetwork("critic", self.actor)
+    self.target_actor = ActorNetwork("target_actor", s2, s2_idx, action_dim)
+    self.target_critic = CriticNetwork("target_critic", self.target_actor)
 
     # setup training ops;
     # training actor requires the critic (for getting gradients)
     # training critic requires target_critic (for RHS of bellman update)
-    self.actor.init_ops_for_training(self.critic,
-                                     agent_opts.actor_learning_rate,
-                                     agent_opts.actor_gradient_clip)
-    self.critic.init_ops_for_training(self.target_critic,
-                                      agent_opts.critic_learning_rate,
-                                      agent_opts.critic_gradient_clip)
+    self.actor.init_ops_for_training(self.critic)
+    self.critic.init_ops_for_training(self.target_critic)
 
   def hook_up_target_networks(self, target_update_rate):
     # hook networks up to their targets
@@ -390,30 +284,29 @@ class DeepDeterministicPolicyGradientAgent(object):
 
   def run_training(self, max_num_actions, max_run_time, batch_size, batches_per_step,
                    saver_util):
-
     # log start time, in case we are limiting by time...
     start_time = time.time()
 
     # run for some max number of actions
     num_actions_taken = 0
-    episode_num = 0
-    while True:
-      # some stats collection
-      stats = {"time": int(time.time()), "episode": episode_num}
+    n = 0
+    while True:      
       rewards = []
       # start a new episode
       state_1 = self.env.reset()
       # prepare data for updating replay memory at end of episode
       initial_state = np.copy(state_1)
       action_reward_state_sequence = []
-      # 1% of the time we record verbose info for entire episode about loss etc
+
       done = False
       while not done:
         # choose action
-        action = self.actor.action_given(explicit_state=state_1, add_noise=True)
+        action = self.actor.action_given(state_1, add_noise=True)
         # take action step in env
         state_2, reward, done, _ = self.env.step(action)
         rewards.append(reward)
+        # cache for adding to replay memory
+        action_reward_state_sequence.append((action, reward, np.copy(state_2)))
         # do a training step (after waiting for buffer to fill a bit...)
         if self.replay_memory.size() > opts.replay_memory_burn_in:
           # run a set of batches
@@ -428,32 +321,37 @@ class DeepDeterministicPolicyGradientAgent(object):
           if VERBOSE_DEBUG:
             print "-----"
             #print "state_1", state_1
-            print "action", action
-            print "reward", reward
-            print "done", done
+            print "action\n", batch.action.T
+            print "reward        ", batch.reward.T
+            print "terminal_mask ", batch.terminal_mask.T
             #print "state_2", state_2
-            expected_q = self.critic.debug_q_value_for([state_1])
-            expected_target_q = self.target_critic.debug_q_value_for([state_1])
-            print "EXPECTED_Q_VALUES", expected_q, expected_target_q
-
-        # cache for adding to replay memory
-        action_reward_state_sequence.append((action, reward, np.copy(state_2)))
+            td_loss, td, q_value = self.critic.check_loss(batch)
+            print "temporal_difference_loss", td_loss
+            print "temporal_difference", td.T
+            print "q_value", q_value.T
+        # roll state for next step.
+        state_1 = state_2
 
       # at end of episode update replay memory
       self.replay_memory.add_episode(initial_state, action_reward_state_sequence)
 
       # dump some stats and progress info
+      stats = collections.OrderedDict()
+      stats["time"] = time.time()
+      stats["n"] = n
       stats["total_reward"] = np.sum(rewards)
       stats["replay_memory_stats"] = self.replay_memory.current_stats()
       print "STATS %s\t%s" % (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                               json.dumps(stats))
+      sys.stdout.flush()
+      n += 1
 
       # save if required
       if saver_util is not None:
         saver_util.save_if_required()
 
       # emit occasional eval
-      if VERBOSE_DEBUG or episode_num % 10 == 0:
+      if VERBOSE_DEBUG or n % 10 == 0:
         self.run_eval(1)
 
       # dump weights once if requested
@@ -468,7 +366,7 @@ class DeepDeterministicPolicyGradientAgent(object):
         break
       if max_run_time > 0 and time.time() > start_time + max_run_time:
         break
-      episode_num += 1
+
 
   def run_eval(self, num_episodes, add_noise=False):
     """ run num_episodes of eval and output episode length and rewards """
@@ -478,13 +376,13 @@ class DeepDeterministicPolicyGradientAgent(object):
       steps = 0
       done = False
       while not done:
-        action = self.actor.action_given(explicit_state=state,
-                                         add_noise=add_noise)
+        action = self.actor.action_given(state, add_noise)
         state, reward, done, _ = self.env.step(action)
-#        print "EVALSTEP r%s %s %s %s" % (i, steps, np.linalg.norm(action), reward)
+        print "EVALSTEP r%s %s %s %s %s" % (i, steps, np.squeeze(action), np.linalg.norm(action), reward)
         total_reward += reward
         steps += 1
       print "EVAL", i, steps, total_reward
+    sys.stdout.flush()
 
   def debug_dump_network_weights(self):
     fn = "/tmp/weights.%s" % time.time()
@@ -495,14 +393,13 @@ class DeepDeterministicPolicyGradientAgent(object):
         f.write("%s\n" % var.eval())
     print "weights written to", fn
 
-def main():
-  env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=False)
 
+def main():
   config = tf.ConfigProto()
 #  config.gpu_options.allow_growth = True
 #  config.log_device_placement = True
   with tf.Session(config=config) as sess:
-    agent = DeepDeterministicPolicyGradientAgent(env=env, agent_opts=opts)
+    agent = DeepDeterministicPolicyGradientAgent(env=env)
 
     # setup saver util and either load latest ckpt, or init if none...
     saver_util = None
@@ -510,6 +407,8 @@ def main():
       saver_util = util.SaverUtil(sess, opts.ckpt_dir, opts.ckpt_freq)
     else:
       sess.run(tf.initialize_all_variables())
+    for v in tf.all_variables():
+      print >>sys.stderr, v.name, v.get_shape()
 
     # now that we've either init'd from scratch, or loaded up a checkpoint,
     # we can hook together target networks

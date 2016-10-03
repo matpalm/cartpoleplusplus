@@ -15,7 +15,6 @@ def png_to_rgb(png_bytes):
   rgba = plt.imread(StringIO.StringIO(png_bytes))
   return rgba[:,:,:3]
 
-
 class EventLog(object):
 
   def __init__(self, path):
@@ -83,11 +82,12 @@ if __name__ == "__main__":
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument('--log-file', type=str, default=None)
   parser.add_argument('--echo', action='store_true', help="write event to stdout")
-  parser.add_argument('--max-process', type=int, help="if set only process this many")
   parser.add_argument('--episodes', type=str, default=None,
                       help="if set only process these specific episodes (comma separated list)")
   parser.add_argument('--img-output-dir', type=str, default=None,
                       help="if set output all renders to this DIR/e_NUM/s_NUM.png")
+  parser.add_argument('--img-debug-overlay', action='store_true',
+                      help="if set overlay image with debug info")
   # TODO args for episode range
   opts = parser.parse_args()
 
@@ -108,7 +108,7 @@ if __name__ == "__main__":
     if opts.echo:
       print "-----", episode_id
       print episode
-    total_num_read_episodes + 1
+    total_num_read_episodes += 1
     total_num_read_events += len(episode.event)
     if opts.img_output_dir is not None:
       dir = "%s/ep_%05d" % (opts.img_output_dir, episode_id)
@@ -117,22 +117,21 @@ if __name__ == "__main__":
         for state_id, state in enumerate(event.state):
           # open RGB png in an image canvas
           img = Image.open(StringIO.StringIO(state.render.png_bytes))
-          canvas = ImageDraw.Draw(img)
-          # draw episode and event number in top left
-          canvas.text((0, 0), "%d %d" % (episode_id, event_id), fill="black")
-          # draw simple fx/fy representation in bottom right...
-          # a bounding box
-          bx, by, bw = 40, 40, 10
-          canvas.line((bx-bw,by-bw, bx+bw,by-bw, bx+bw,by+bw, bx-bw,by+bw, bx-bw,by-bw), fill="black")
-          # then a simple fx/fy line
-          fx, fy = event.action[0], event.action[1]
-          canvas.line((bx,by, bx+(fx*bw), by+(fy*bw)), fill="black")
+          if opts.img_debug_overlay:
+            canvas = ImageDraw.Draw(img)
+            # draw episode and event number in top left
+            canvas.text((0, 0), "%d %d" % (episode_id, event_id), fill="black")
+            # draw simple fx/fy representation in bottom right...
+            # a bounding box
+            bx, by, bw = 40, 40, 10
+            canvas.line((bx-bw,by-bw, bx+bw,by-bw, bx+bw,by+bw, bx-bw,by+bw, bx-bw,by-bw), fill="black")
+            # then a simple fx/fy line
+            fx, fy = event.action[0], event.action[1]
+            canvas.line((bx,by, bx+(fx*bw), by+(fy*bw)), fill="black")
           # write it out
-#          img = img.resize((200, 200))
+          img = img.resize((200, 200))
           filename = "%s/ev_%05d_r%d.png" % (dir, event_id, state_id)
           img.save(filename)
-    if opts.max_process is not None and e_id+1 >= opts.max_process:
-      break
   print >>sys.stderr, "read", total_num_read_episodes, "episodes for a total of", total_num_read_events, "events"
 
 
