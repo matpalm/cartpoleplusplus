@@ -7,48 +7,38 @@ import StringIO
 import struct
 
 def rgb_to_png(rgb):
+  """convert RGB data from render to png"""
   sio = StringIO.StringIO()
   plt.imsave(sio, rgb)
   return sio.getvalue()
 
 def png_to_rgb(png_bytes):
+  """convert png (from rgb_to_png) to RGB"""
   # note PNG is always RGBA so we need to slice off A
   rgba = plt.imread(StringIO.StringIO(png_bytes))
   return rgba[:,:,:3]
 
-
-def add_state_to_event(state, event, use_raw_pixels):
-  """ serialises state and adds to event."""
-  if use_raw_pixels:
-    # TODO: be nice to have pose info here too in the pixel case...
-    for r in range(state.shape[2] / 3):  # 3 channels per action repeat
-      s = event.state.add()
-      s.render.width = state.shape[1]
-      s.render.height = state.shape[0]
-      s.render.png_bytes = rgb_to_png(state[:,:,3*r:3*(r+1)])
-  else:
-    for r in range(state.shape[0]):
-      s = event.state.add()
-      s.cart_pose.extend(map(float, state[r][0]))
-      s.pole_pose.extend(map(float, state[r][1]))  
-
-def read_state_from_event(event, use_raw_pixels):
-  """ reads serialised state from event and returns in form equiv to add_state_to_event"""
-  if use_raw_pixels:
-    raise Exception("todo")
+def read_state_from_event(event):
+  """unpack state from event (i.e. inverse of add_state_to_event)"""
+  if event.state[0].HasField("render"):
+    num_repeats = len(event.state)
+    eg_render = event.state[0].render
+    state = np.empty((eg_render.height, eg_render.width, num_repeats*3))
+    for i, s in enumerate(event.state):
+      state[:,:,3*i:3*(i+1)] = png_to_rgb(s.render.png_bytes)
   else:
     state = np.empty((len(event.state), 2, 7))
     for i, s in enumerate(event.state):
       state[i][0] = s.cart_pose
       state[i][1] = s.pole_pose
-    return state
-  
+  return state
 
 class EventLog(object):
 
-  def __init__(self, path):
+  def __init__(self, path, use_raw_pixels):
     self.log_file = open(path, "ab")
     self.episode_entry = None
+    self.use_raw_pixels = use_raw_pixels
 
   def reset(self):
     if self.episode_entry is not None:
@@ -62,16 +52,35 @@ class EventLog(object):
         self.log_file.flush()
     self.episode_entry = event_pb2.Episode()
 
-  def add(self, state, use_raw_pixels, done, action, reward):
+  def add_state_to_event(self, state, event):
+    """pack state into event"""
+    if self.use_raw_pixels:
+      # TODO: be nice to have pose info here too in the pixel case...
+      for r in range(state.shape[2] / 3):  # 3 channels per action repeat
+        s = event.state.add()
+        s.render.width = state.shape[1]
+        s.render.height = state.shape[0]
+        s.render.png_bytes = rgb_to_png(state[:,:,3*r:3*(r+1)])
+    else:
+      for r in range(state.shape[0]):
+        s = event.state.add()
+        s.cart_pose.extend(map(float, state[r][0]))
+        s.pole_pose.extend(map(float, state[r][1]))
+
+  def add(self, state, action, reward):
     event = self.episode_entry.event.add()
-    add_state_to_event(state, event, use_raw_pixels)
-    event.is_terminal = done
+    self.add_state_to_event(state, event)
     if isinstance(action, int):
       event.action.append(action)  # single action
     else:
       assert action.shape[0] == 1  # never log batch operations
       event.action.extend(map(float, action[0]))
     event.reward = reward
+
+  def add_just_state(self, state):
+    event = self.episode_entry.event.add()
+    self.add_state_to_event(state, event)
+
 
 class EventLogReader(object):
 
@@ -120,16 +129,12 @@ if __name__ == "__main__":
   total_num_read_events = 0
 
   elr = EventLogReader(opts.log_file)
-  for episode_id, episode in enumerate(elr.entries()):   
+  for episode_id, episode in enumerate(elr.entries()):
     if episode_whitelist is not None and episode_id not in episode_whitelist:
       continue
     if opts.echo:
       print "-----", episode_id
       print episode
-      # > DEBUG
-      for event in episode.event:
-        print read_state_from_event(event, False)
-      # < DEBUG
     total_num_read_episodes += 1
     total_num_read_events += len(episode.event)
     if opts.img_output_dir is not None:

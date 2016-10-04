@@ -19,41 +19,54 @@ parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFo
 parser.add_argument('--num-eval', type=int, default=0,
                     help="if >0 just run this many episodes with no training")
 parser.add_argument('--max-num-actions', type=int, default=0,
-                    help="train for (at least) this number of actions (always finish current episode)"
-                         " ignore if <=0")
+                    help="train for (at least) this number of actions (always finish"
+                         " current episode) ignore if <=0")
 parser.add_argument('--max-run-time', type=int, default=0,
-                    help="train for (at least) this number of seconds (always finish current episode)"
-                         " ignore if <=0")
-parser.add_argument('--ckpt-dir', type=str, default=None, help="if set save ckpts to this dir")
+                    help="train for (at least) this number of seconds (always finish"
+                         " current episode) ignore if <=0")
+parser.add_argument('--ckpt-dir', type=str, default=None, 
+                    help="if set save ckpts to this dir")
 parser.add_argument('--ckpt-freq', type=int, default=300, help="freq (sec) to save ckpts")
 parser.add_argument('--batch-size', type=int, default=128, help="training batch size")
 parser.add_argument('--batches-per-step', type=int, default=5,
                     help="number of batches to train per step")
 parser.add_argument('--target-update-rate', type=float, default=0.0001,
-                    help="affine combo for updating target networks each time we run a training batch")
+                    help="affine combo for updating target networks each time we run a"
+                         " training batch")
 # TODO params per value, P, output_action networks?
 parser.add_argument('--share-input-state-representation', action='store_true',
-                    help="if set we have one network for processing input state that is shared between" +
-                          " value, l_value and output_action networks. if not set each net has it's own" +
-                          " network.")
-parser.add_argument('--hidden-layers', type=str, default="100,50", help="hidden layer sizes")
+                    help="if set we have one network for processing input state that is"
+                         " shared between value, l_value and output_action networks. if"
+                         " not set each net has it's own network.")
+parser.add_argument('--hidden-layers', type=str, default="100,50",
+                    help="hidden layer sizes")
 parser.add_argument('--learning-rate', type=float, default=0.001, help="learning rate")
-parser.add_argument('--gradient-clip', type=float, default=5, help="do global clipping to this norm")
-parser.add_argument('--print-gradients', action='store_true', help="whether to verbose print all gradients and l2 norms")
-parser.add_argument('--discount', type=float, default=0.99, help="discount for RHS of bellman equation update")
-parser.add_argument('--replay-memory-size', type=int, default=22000, help="max size of replay memory")
-parser.add_argument('--replay-memory-burn-in', type=int, default=1000, help="dont train from replay memory until it reaches this size")
-parser.add_argument('--eval-action-noise', action='store_true', help="whether to use noise during eval")
+parser.add_argument('--gradient-clip', type=float, default=5,
+                    help="do global clipping to this norm")
+parser.add_argument('--print-gradients', action='store_true',
+                    help="whether to verbose print all gradients and l2 norms")
+parser.add_argument('--discount', type=float, default=0.99,
+                    help="discount for RHS of bellman equation update")
+parser.add_argument('--event-log-in', type=str, default=None,
+                    help="prepopulate replay memory with entries from this event log")
+parser.add_argument('--replay-memory-size', type=int, default=22000,
+                    help="max size of replay memory")
+parser.add_argument('--replay-memory-burn-in', type=int, default=1000,
+                    help="dont train from replay memory until it reaches this size")
+parser.add_argument('--eval-action-noise', action='store_true',
+                    help="whether to use noise during eval")
 parser.add_argument('--action-noise-theta', type=float, default=0.01,
-                    help="OrnsteinUhlenbeckNoise theta (rate of change) param for action exploration")
+                    help="OrnsteinUhlenbeckNoise theta (rate of change) param for action"
+                         " exploration")
 parser.add_argument('--action-noise-sigma', type=float, default=0.2,
-                    help="OrnsteinUhlenbeckNoise sigma (magnitude) param for action exploration")
+                    help="OrnsteinUhlenbeckNoise sigma (magnitude) param for action"
+                         " exploration")
 bullet_cartpole.add_opts(parser)
 opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
 
 
-# TODO: if we import slim _before_ building cartpole env we can't start bullet with GL gui o_O
+# TODO: if we import slim before cartpole env we can't start bullet withGL gui o_O
 env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=False)
 import base_network
 import tensorflow.contrib.slim as slim
@@ -84,7 +97,7 @@ class ValueNetwork(base_network.Network):
 
     with tf.variable_scope(namespace):
       # expose self.input_state_representation since it will be the network "shared"
-      # by l_value and output_action network when running --share-input-state-representation
+      # by l_value & output_action network when running --share-input-state-representation
       self.input_state_representation = self.input_state_network(input_state, opts)
       self.value = slim.fully_connected(scope='fc',
                                         inputs=self.input_state_representation,
@@ -134,7 +147,7 @@ class NafNetwork(base_network.Network):
 
     with tf.variable_scope(namespace):
       # mu (output_action) is also a simple NN mapping input state -> action
-      # this is our target op for inference (i.e. the value that maximises Q given input_state)
+      # this is our target op for inference (i.e. value that maximises Q given input_state)
       with tf.variable_scope("output_action"):
         if opts.share_input_state_representation:
           input_representation = value_net.input_state_representation
@@ -208,7 +221,8 @@ class NafNetwork(base_network.Network):
 
       # target y is reward + discounted target value
       # TODO: pull discount out
-      self.target_y = self.reward + (self.terminal_mask * opts.discount * target_value_net.value)
+      self.target_y = self.reward + (self.terminal_mask * opts.discount * \
+                                     target_value_net.value)
       self.target_y = tf.stop_gradient(self.target_y)
 
       # loss is squared difference that we want to minimise.
@@ -276,10 +290,10 @@ class NormalizedAdvantageFunctionAgent(object):
     batched_state_shape = [None] + list(state_shape)
     s1, s1_idx, s2, s2_idx = self.replay_memory.batch_ops()
 
-    # initialise base models for value & naf networks.
-    # value subportion of net is explicitly created seperate because it has a target network
-    # note: in the case of --share-input-state-representation the input state network of the value_net
-    #       will be reused by the naf.l_value and naf.output_actions net
+    # initialise base models for value & naf networks. value subportion of net is
+    # explicitly created seperate because it has a target network note: in the case of
+    # --share-input-state-representation the input state network of the value_net will
+    # be reused by the naf.l_value and naf.output_actions net
     self.value_net = ValueNetwork("value", s1, s1_idx,
                                   opts.hidden_layers)
     self.target_value_net = ValueNetwork("target_value", s2, s2_idx,
@@ -289,10 +303,15 @@ class NormalizedAdvantageFunctionAgent(object):
                           self.value_net, self.target_value_net,
                           action_dim)
 
-  def hook_up_target_networks(self, target_update_rate):
+  def post_var_init_setup(self):
+    # prepopulate replay memory (if configured to do so)
+    if opts.event_log_in:
+      self.replay_memory.reset_from_event_log(opts.event_log_in)
+    self.replay_memory.dump()
     # hook networks up to their targets
     # ( does one off clobber to init all vars in target network )
-    self.target_value_net.set_as_target_network_for(self.value_net, target_update_rate)
+    self.target_value_net.set_as_target_network_for(self.value_net, 
+                                                    opts.target_update_rate)
 
   def run_training(self, max_num_actions, max_run_time, batch_size, batches_per_step,
                    saver_util):
@@ -391,7 +410,8 @@ class NormalizedAdvantageFunctionAgent(object):
       while not done:
         action = self.naf.action_given(state, add_noise)
         state, reward, done, _ = self.env.step(action)
-        print "EVALSTEP e%d s%d action=%s (l2=%s)" % (i, steps, action, np.linalg.norm(action))
+        print "EVALSTEP e%d s%d action=%s (l2=%s)" % (i, steps, action, 
+                                                      np.linalg.norm(action))
         total_reward += reward
         steps += 1
       print "EVAL", i, steps, total_reward
@@ -424,8 +444,8 @@ def main():
       print >>sys.stderr, v.name, v.get_shape()
 
     # now that we've either init'd from scratch, or loaded up a checkpoint,
-    # we can hook together target networks
-    agent.hook_up_target_networks(opts.target_update_rate)
+    # we can do any required post init work.
+    agent.post_var_init_setup()
 
     # run either eval or training
     if opts.num_eval > 0:

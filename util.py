@@ -111,3 +111,16 @@ class OrnsteinUhlenbeckNoise(object):
     self.state = np.clip(self.max_magnitude, -self.max_magnitude, self.state)
     return np.copy(self.state)
 
+def collapsed_successive_ranges(values):
+  """reduce an array, e.g. [2,3,4,5,13,14,15], to its successive ranges [2-5, 13-15]"""
+  last, start, out = None, None, []
+  for value in values:
+    if start is None:
+      start = value
+    elif value != last + 1:
+      out.append("%d-%d" % (start, last))
+      start = value
+    last = value
+  out.append("%d-%d" % (start, last))
+  return ", ".join(out)
+

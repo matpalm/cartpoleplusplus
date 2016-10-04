@@ -18,7 +18,7 @@ def add_opts(parser):
   parser.add_argument('--initial-force', type=float, default=55.0,
                       help="magnitude of initial push, in random direction")
   parser.add_argument('--no-random-theta', action='store_true')
-  parser.add_argument('--event-log', type=str, default=None,
+  parser.add_argument('--event-log-out', type=str, default=None,
                       help="path to record event log.")
   parser.add_argument('--max-episode-len', type=int, default=200,
                       help="maximum episode len for cartpole")
@@ -85,9 +85,9 @@ class BulletCartpole(gym.Env):
       self.action_space = spaces.Box(-1.0, 1.0, shape=(1, 2))
 
     # open event log
-    if opts.event_log:
+    if opts.event_log_out:
       import event_log
-      self.event_log = event_log.EventLog(opts.event_log)
+      self.event_log = event_log.EventLog(opts.event_log_out, opts.use_raw_pixels)
     else:
       self.event_log = None
 
@@ -124,7 +124,6 @@ class BulletCartpole(gym.Env):
     p.loadURDF("models/ground.urdf", 0,0,0, 0,0,0,1)
     self.cart = p.loadURDF("models/cart.urdf", 0,0,0.08, 0,0,0,1)
     self.pole = p.loadURDF("models/pole.urdf", 0,0,0.35, 0,0,0,1)
-    self.reset()
 
   def _configure(self, display=None):
     pass
@@ -203,7 +202,7 @@ class BulletCartpole(gym.Env):
     # log this event.
     # TODO in the --use-raw-pixels case would be nice to have poses in state repeats too.
     if self.event_log:
-      self.event_log.add(self.state, self.use_raw_pixels, self.done, action, reward)
+      self.event_log.add(self.state, action, reward)
 
     # return observation
     return np.copy(self.state), reward, self.done, info
@@ -241,10 +240,6 @@ class BulletCartpole(gym.Env):
     self.steps = 0
     self.done = False
 
-    # reset event log (if applicable)
-    if self.event_log:
-      self.event_log.reset()
-
     # reset pole on cart in starting poses
     p.resetBasePositionAndOrientation(self.cart, (0,0,0.08), (0,0,0,1))
     p.resetBasePositionAndOrientation(self.pole, (0,0,0.35), (0,0,0,1))
@@ -262,4 +257,11 @@ class BulletCartpole(gym.Env):
     # bootstrap state by running for all repeats
     for i in xrange(self.repeats):
       self.set_state_element_for_repeat(i)
+
+    # reset event log (if applicable) and add entry with only state
+    if self.event_log:
+      self.event_log.reset()
+      self.event_log.add_just_state(self.state)
+
+    # return this state
     return np.copy(self.state)

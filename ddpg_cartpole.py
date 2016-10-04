@@ -412,6 +412,7 @@ def main():
 
     # now that we've either init'd from scratch, or loaded up a checkpoint,
     # we can hook together target networks
+    # TODO: support pre loading of replay memory... see naf_cartpole
     agent.hook_up_target_networks(opts.target_update_rate)
 
     # run either eval or training

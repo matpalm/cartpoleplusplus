@@ -3,6 +3,7 @@ import event_log
 import numpy as np
 import sys
 import tensorflow as tf
+import util
 
 Batch = collections.namedtuple("Batch", "state_1_idx action reward terminal_mask state_2_idx")
 
@@ -57,38 +58,58 @@ class ReplayMemory(object):
     self.stats = collections.Counter()
 
   def reset_from_event_log(self, event_log_file):
-    """ resets contents from event_log. 
+    """ resets contents from event_log.
         assumes event_log will fit in main memory.
         only uses first self.buffer_size entries of log"""
-    # see _add method for more info 
     elr = event_log.EventLogReader(event_log_file)
-    new_state = np.empty(self.state_buffer_size)
-    state_idx = 0
-    insert = 0
+    new_state = np.empty(self.state.get_shape())  # will clobber self.state
+    # see _add method for more info
+    new_state_idx = 0
+    self.insert = 0
     for episode in elr.entries():
-      first_event = True
-      for event in episode.event:
-        if first_event:
-          first_event = False
+      for i, event in enumerate(episode.event):
+#        print ">event", i
+        # add state to tmp buffer
+        state = event_log.read_state_from_event(event)
+        new_state[new_state_idx] = state
+        if i == 0:
+          # first event is just for state; i.e. should be no action or reward
+          assert len(event.action) == 0
+          assert not event.HasField("reward")
         else:
-          pass
-        assert len(event.state) == 2
-        if len(self.state_1_idx) >= self.buffer_size - 2: break
-        new_state[state_idx] = event.state[0]
-        new_state[state_idx+1] = event.state[1]
-        self.state_1_idx[insert] = state_idx
-        self.state_2_idx[insert] = state_idx + 1
-        state_idx += 2
-        self.action[insert] = event.action  # array
-        self.reward[insert] = event.reward
-        self.terminal_mask[insert] = 0.0 if event.is_terminal else 1.0
-        
+          # add event to replay memory
+#          print "s1_idx", new_state_idx-1
+          self.state_1_idx[self.insert] = new_state_idx - 1
+          self.action[self.insert] = event.action
+          self.reward[self.insert] = event.reward
+          is_last_event = i == len(episode.event)-1
+          self.terminal_mask[self.insert] = 0 if is_last_event else 1
+          self.state_2_idx[self.insert] = new_state_idx
+#          print "inserted s1=%s a=%s r=%s t=%s s2=%s" % (new_state_idx-1, event.action, event.reward, is_last_event, new_state_idx)
+          self.insert += 1
+          if self.insert == self.buffer_size:
+#            print "insert buffer full!"
+            break
+        # roll over event
+        new_state_idx += 1
+        if new_state_idx == self.state_buffer_size:
+#          print "state_buffer is full!"
+          break
+#        print "<event"
+      if self.insert == self.buffer_size:
+#        print "insert buffer full!!!!"
+        break
+#      print "<episode"
+
     # assign variable in one hit.
+#    print "self.state.get_shape()", self.state.get_shape()
+#    print "new_state.shape", new_state.shape
+#    print ">sess.run assign state"
     self.sess.run(self.state.assign(new_state))
-    
-    self.insert = insert
+#    print "<sess.run assign state"
     self.full = self.insert == self.buffer_size
-    self.state_free_slots = list(range(insert, self.state_buffer_size))
+    if self.full: self.insert = 0
+    self.state_free_slots = list(range(new_state_idx, self.state_buffer_size))
     self.stats = collections.Counter()
 
 
@@ -127,11 +148,13 @@ class ReplayMemory(object):
       # are are about to overwrite an existing entry.
       # we always free the state_1 slot we are about to clobber...
       self.state_free_slots.append(self.state_1_idx[self.insert])
+#      print "full; so free slot", self.state_1_idx[self.insert]
       # and we free the state_2 slot also if the slot is a terminal event
       # (since that implies no other event uses this state_2 as a state_1)
       self.stats['cache_evicted_s1'] += 1
       if self.terminal_mask[self.insert] == 0:
         self.state_free_slots.append(self.state_2_idx[self.insert])
+#        print "also, since terminal, free", self.state_2_idx[self.insert]
         self.stats['cache_evicted_s2'] += 1
 
     # add s1, a, r
@@ -152,6 +175,8 @@ class ReplayMemory(object):
     if self.insert >= self.buffer_size:
       self.insert = 0
       self.full = True
+
+#    print ">add s1_idx=%s, a=%s, r=%s, t=%s s2_idx=%s (free %s)" % (s1_idx, a, r, t, s2_idx, self.state_free_slots)
 
     # return s2 idx
     return s2_idx
@@ -178,25 +203,37 @@ class ReplayMemory(object):
                  self.state_2_idx[idxs])
 
   def dump(self):
-    print ">dump"
+    print ">>>> dump"
     print "insert", self.insert
     print "full?", self.full
-    print "state free slots", self.state_free_slots
+    print "state free slots", util.collapsed_successive_ranges(self.state_free_slots)
     if self.insert==0 and not self.full:
       print "EMPTY!"
       return
+    entire_state = self.sess.run(self.state)
     idxs = range(self.buffer_size if self.full else self.insert)
     for idx in idxs:
-      print "- idx", idx,
-      print "-- state_1_idx", self.state_1_idx[idx],
-      print self.state.eval(session=self.sess)[self.state_1_idx[idx]]
-      print "-- action", self.action[idx]
-      print "-- reward", self.reward[idx]
-      print "-- state_2_idx", self.state_2_idx[idx],
-      print "-- terminal_mask", self.terminal_mask[idx]
-      print self.state.eval(session=self.sess)[self.state_2_idx[idx]]
+      print "idx", idx,
+      print "state_1_idx", self.state_1_idx[idx],
+#      print "state_1", entire_state[self.state_1_idx[idx]]
+      print "action", self.action[idx],
+      print "reward", self.reward[idx],
+      print "terminal_mask", self.terminal_mask[idx],
+      print "state_2_idx", self.state_2_idx[idx]
+#      print "state_2", entire_state[self.state_2_idx[idx]]
+    print "<<<< dump"
 
   def current_stats(self):
     current_stats = dict(self.stats)
     current_stats["free_slots"] = len(self.state_free_slots)
     return current_stats
+
+
+if __name__ == "__main__":
+  with tf.Session() as sess:
+    rm = ReplayMemory(sess, buffer_size=10, state_shape=(2,2,7),
+                      action_dim=2)
+    sess.run(tf.initialize_all_variables())
+    rm.dump()
+    rm.reset_from_event_log("events")
+    rm.dump()

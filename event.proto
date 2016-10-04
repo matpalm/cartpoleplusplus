@@ -14,11 +14,15 @@ message State {
   optional Render render = 3;
 }
 
+// Event corresponds to output from one step of simulation
+// e.g. step(action) -> state, reward, done.
+// For env.reset case event has state but no action, reward
+// or is_terminal.
+// Assume last event in episode is terminal event (done=True)
 message Event {
-  repeated State state = 1;   // action repeats
-  optional bool is_terminal = 2;
-  repeated float action = 3;
-  optional float reward = 4;
+  repeated float action = 1;
+  repeated State state = 2;
+  optional float reward = 3;
 }
 
 message Episode {
