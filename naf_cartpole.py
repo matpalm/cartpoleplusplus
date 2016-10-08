@@ -24,12 +24,15 @@ parser.add_argument('--max-num-actions', type=int, default=0,
 parser.add_argument('--max-run-time', type=int, default=0,
                     help="train for (at least) this number of seconds (always finish"
                          " current episode) ignore if <=0")
-parser.add_argument('--ckpt-dir', type=str, default=None, 
+parser.add_argument('--ckpt-dir', type=str, default=None,
                     help="if set save ckpts to this dir")
 parser.add_argument('--ckpt-freq', type=int, default=300, help="freq (sec) to save ckpts")
 parser.add_argument('--batch-size', type=int, default=128, help="training batch size")
 parser.add_argument('--batches-per-step', type=int, default=5,
                     help="number of batches to train per step")
+parser.add_argument('--dont-do-rollouts', action="store_true",
+                    help="by dft we do rollouts to generate data then train after each rollout. if this flag is set we"
+                         " dont do any rollouts. this only makes sense to do if --event-log-in set.")
 parser.add_argument('--target-update-rate', type=float, default=0.0001,
                     help="affine combo for updating target networks each time we run a"
                          " training batch")
@@ -40,7 +43,9 @@ parser.add_argument('--share-input-state-representation', action='store_true',
                          " not set each net has it's own network.")
 parser.add_argument('--hidden-layers', type=str, default="100,50",
                     help="hidden layer sizes")
-parser.add_argument('--learning-rate', type=float, default=0.001, help="learning rate")
+parser.add_argument('--optimiser', type=str, default="GradientDescent", help="tf.train.XXXOptimizer to use")
+parser.add_argument('--optimiser-args', type=str, default="{\"learning_rate\": 0.001}",
+                    help="json serialised args for optimiser constructor")
 parser.add_argument('--gradient-clip', type=float, default=5,
                     help="do global clipping to this norm")
 parser.add_argument('--print-gradients', action='store_true',
@@ -65,6 +70,7 @@ bullet_cartpole.add_opts(parser)
 opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
 
+# TODO: check that if --dont-do-rollouts set then --event-log-in also set
 
 # TODO: if we import slim before cartpole env we can't start bullet withGL gui o_O
 env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=False)
@@ -228,8 +234,12 @@ class NafNetwork(base_network.Network):
       # loss is squared difference that we want to minimise.
       self.loss = tf.reduce_mean(tf.pow(self.q_value - self.target_y, 2))
       with tf.variable_scope("optimiser"):
+        # dynamically create optimiser
+        optimiser_cstr = eval("tf.train.%sOptimizer" % opts.optimiser)
+        args = json.loads(opts.optimiser_args)
+        optimiser = optimiser_cstr(**args)
+        print "using optimiser", optimiser, "with args", args
         # calc gradients
-        optimiser = tf.train.GradientDescentOptimizer(opts.learning_rate)
         gradients = optimiser.compute_gradients(self.loss)
         # potentially clip and wrap with debugging tf.Print
         gradients = util.clip_and_debug_gradients(gradients, opts)
@@ -254,12 +264,13 @@ class NafNetwork(base_network.Network):
     return actions
 
   def train(self, batch):
-    tf.get_default_session().run([self.check_numerics, self.train_op],
+    _, _, l = tf.get_default_session().run([self.check_numerics, self.train_op, self.loss],
                                  feed_dict={self.input_state_idx: batch.state_1_idx,
                                             self.input_action: batch.action,
                                             self.reward: batch.reward,
                                             self.terminal_mask: batch.terminal_mask,
                                             self.input_state_2_idx: batch.state_2_idx})
+    return l
 
   def debug_values(self, batch):
     values = tf.get_default_session().run([self._l_values, self.loss, self.value_net.value,
@@ -307,10 +318,9 @@ class NormalizedAdvantageFunctionAgent(object):
     # prepopulate replay memory (if configured to do so)
     if opts.event_log_in:
       self.replay_memory.reset_from_event_log(opts.event_log_in)
-    self.replay_memory.dump()
     # hook networks up to their targets
     # ( does one off clobber to init all vars in target network )
-    self.target_value_net.set_as_target_network_for(self.value_net, 
+    self.target_value_net.set_as_target_network_for(self.value_net,
                                                     opts.target_update_rate)
 
   def run_training(self, max_num_actions, max_run_time, batch_size, batches_per_step,
@@ -323,53 +333,66 @@ class NormalizedAdvantageFunctionAgent(object):
     n = 0
     while True:
       rewards = []
+      losses = []
       # run an episode
       state_1 = self.env.reset()
       # prepare data for updating replay memory at end of episode
       initial_state = np.copy(state_1)
       action_reward_state_sequence = []
 
-      done = False
-      while not done:
-        # choose action
-        action = self.naf.action_given(state_1, add_noise=True)
-        # take action step in env
-        state_2, reward, done, _ = self.env.step(action)
-        rewards.append(reward)
-        # cache for adding to replay memory
-        action_reward_state_sequence.append((action, reward, np.copy(state_2)))
-        # do a training step (after waiting for buffer to fill a bit...)
-        if self.replay_memory.size() > opts.replay_memory_burn_in:
-          # run a set of batches
-          for _ in xrange(batches_per_step):
-            batch = self.replay_memory.batch(batch_size)
-            self.naf.train(batch)
-          # update target nets
-          self.target_value_net.update_weights()
-          # do debug (if requested) on last batch
-          if VERBOSE_DEBUG:
-            print "-----"
-#            print "state_1", batch.state_1.T
-            print "action\n", batch.action.T
-            print "reward        ", batch.reward.T
-            print "terminal_mask ", batch.terminal_mask.T
-#            print "state_2", batch.state_2.T
-            l_values, l, v, a, vp = self.naf.debug_values(batch)
-            print "l_values\n", l_values.T
-            print "loss\t", l
-            print "val\t" , np.mean(v), "\t", v.T
-            print "adv\t", np.mean(a), "\t", a.T
-            print "val'\t", np.mean(vp), "\t", vp.T
-        # roll state for next step.
-        state_1 = state_2
+      # run an episode
+      if opts.dont_do_rollouts:
+        # _not_ gathering experience online
+        pass
+      else:
+        done = False
+        while not done:
+          # choose action
+          action = self.naf.action_given(state_1, add_noise=True)
+          # take action step in env
+          state_2, reward, done, _ = self.env.step(action)
+          rewards.append(reward)
+          # cache for adding to replay memory
+          action_reward_state_sequence.append((action, reward, np.copy(state_2)))
+          # roll state for next step.
+          state_1 = state_2
+        # at end of episode update replay memory
+        self.replay_memory.add_episode(initial_state, action_reward_state_sequence)
 
-      # at end of episode update replay memory
-      self.replay_memory.add_episode(initial_state, action_reward_state_sequence)
+      # do a training step (after waiting for buffer to fill a bit...)
+      if self.replay_memory.size() > opts.replay_memory_burn_in:
+        # run a set of batches
+        s = time.time()
+        for _ in xrange(batches_per_step):
+          batch = self.replay_memory.batch(batch_size)
+          losses.append(self.naf.train(batch))
+        # update target nets
+        self.target_value_net.update_weights()
+        # do debug (if requested) on last batch
+        if VERBOSE_DEBUG:
+          self.replay_memory.dump()
+          print "-----"
+          print "> BATCH"
+          print "state_1", batch.state_1_idx.T
+          print "action\n", batch.action.T
+          print "reward        ", batch.reward.T
+          print "terminal_mask ", batch.terminal_mask.T
+          print "state_2", batch.state_2_idx.T
+          print "< BATCH"
+          l_values, l, v, a, vp = self.naf.debug_values(batch)
+          print "> BATCH DEBUG VALUES"
+          print "l_values\n", l_values.T
+          print "loss\t", l
+          print "val\t" , np.mean(v), "\t", v.T
+          print "adv\t", np.mean(a), "\t", a.T
+          print "val'\t", np.mean(vp), "\t", vp.T
+          print "< BATCH DEBUG VALUES"
 
       # dump some stats and progress info
       stats = collections.OrderedDict()
       stats["time"] = time.time()
       stats["n"] = n
+      stats["mean_losses"] = float(np.mean(losses))
       stats["total_reward"] = np.sum(rewards)
       stats["episode_len"] = len(rewards)
       stats["replay_memory_stats"] = self.replay_memory.current_stats()
@@ -410,7 +433,7 @@ class NormalizedAdvantageFunctionAgent(object):
       while not done:
         action = self.naf.action_given(state, add_noise)
         state, reward, done, _ = self.env.step(action)
-        print "EVALSTEP e%d s%d action=%s (l2=%s)" % (i, steps, action, 
+        print "EVALSTEP e%d s%d action=%s (l2=%s)" % (i, steps, action,
                                                       np.linalg.norm(action))
         total_reward += reward
         steps += 1
