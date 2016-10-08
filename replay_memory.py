@@ -3,6 +3,7 @@ import event_log
 import numpy as np
 import sys
 import tensorflow as tf
+import time
 import util
 
 Batch = collections.namedtuple("Batch", "state_1_idx action reward terminal_mask state_2_idx")
@@ -61,6 +62,7 @@ class ReplayMemory(object):
     """ resets contents from event_log.
         assumes event_log will fit in main memory.
         only uses first self.buffer_size entries of log"""
+    start_time = time.time()
     elr = event_log.EventLogReader(event_log_file)
     new_state = np.empty(self.state.get_shape())  # will clobber self.state
     # see _add method for more info
@@ -111,7 +113,10 @@ class ReplayMemory(object):
     if self.full: self.insert = 0
     self.state_free_slots = list(range(new_state_idx, self.state_buffer_size))
     self.stats = collections.Counter()
+    end_time = time.time()
 
+    print "prepopulated event_log from [%s] in %f sec." \
+          " #states_loaded=%d replay_buffer.full=%s" % (event_log_file, (end_time - start_time), new_state_idx, self.full)
 
   def batch_ops(self):
     """ returns placeholders for idxs (and corresponding opts gathering over those idxs) for state1 and state2"""
