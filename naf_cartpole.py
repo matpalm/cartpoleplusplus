@@ -43,13 +43,8 @@ parser.add_argument('--share-input-state-representation', action='store_true',
                          " not set each net has it's own network.")
 parser.add_argument('--hidden-layers', type=str, default="100,50",
                     help="hidden layer sizes")
-parser.add_argument('--optimiser', type=str, default="GradientDescent", help="tf.train.XXXOptimizer to use")
-parser.add_argument('--optimiser-args', type=str, default="{\"learning_rate\": 0.001}",
-                    help="json serialised args for optimiser constructor")
-parser.add_argument('--gradient-clip', type=float, default=5,
-                    help="do global clipping to this norm")
-parser.add_argument('--print-gradients', action='store_true',
-                    help="whether to verbose print all gradients and l2 norms")
+parser.add_argument('--use-batch-norm', action='store_true',
+                    help="whether to use batch norm on conv layers")
 parser.add_argument('--discount', type=float, default=0.99,
                     help="discount for RHS of bellman equation update")
 parser.add_argument('--event-log-in', type=str, default=None,
@@ -66,6 +61,9 @@ parser.add_argument('--action-noise-theta', type=float, default=0.01,
 parser.add_argument('--action-noise-sigma', type=float, default=0.2,
                     help="OrnsteinUhlenbeckNoise sigma (magnitude) param for action"
                          " exploration")
+
+util.add_opts(parser)
+
 bullet_cartpole.add_opts(parser)
 opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
@@ -113,7 +111,8 @@ class ValueNetwork(base_network.Network):
 
   def value_given(self, state):
     return tf.get_default_session().run(self.value,
-                                        feed_dict={self.input_state: state})
+                                        feed_dict={self.input_state: state,
+                                                   base_network.IS_TRAINING: False})
 
 
 class NafNetwork(base_network.Network):
@@ -234,11 +233,8 @@ class NafNetwork(base_network.Network):
       # loss is squared difference that we want to minimise.
       self.loss = tf.reduce_mean(tf.pow(self.q_value - self.target_y, 2))
       with tf.variable_scope("optimiser"):
-        # dynamically create optimiser
-        optimiser_cstr = eval("tf.train.%sOptimizer" % opts.optimiser)
-        args = json.loads(opts.optimiser_args)
-        optimiser = optimiser_cstr(**args)
-        print "using optimiser", optimiser, "with args", args
+        # dynamically create optimiser based on opts
+        optimiser = util.construct_optimiser(opts)
         # calc gradients
         gradients = optimiser.compute_gradients(self.loss)
         # potentially clip and wrap with debugging tf.Print
@@ -257,7 +253,8 @@ class NafNetwork(base_network.Network):
     # is never used for any part of computation graph required for online training. it's
     # only used during training after being the replay buffer.
     actions = tf.get_default_session().run(self.output_action,
-                                           feed_dict={self.input_state: [state]})
+                                           feed_dict={self.input_state: [state],
+                                                      base_network.IS_TRAINING: False})
     if add_noise:
       actions[0] += self.exploration_noise.sample()
       actions = np.clip(1, -1, actions)  # action output is _always_ (-1, 1)
@@ -269,7 +266,8 @@ class NafNetwork(base_network.Network):
                                             self.input_action: batch.action,
                                             self.reward: batch.reward,
                                             self.terminal_mask: batch.terminal_mask,
-                                            self.input_state_2_idx: batch.state_2_idx})
+                                            self.input_state_2_idx: batch.state_2_idx,
+                                            base_network.IS_TRAINING: True})
     return l
 
   def debug_values(self, batch):
@@ -279,7 +277,8 @@ class NafNetwork(base_network.Network):
                                               self.input_action: batch.action,
                                               self.reward: batch.reward,
                                               self.terminal_mask: batch.terminal_mask,
-                                              self.input_state_2_idx: batch.state_2_idx})
+                                              self.input_state_2_idx: batch.state_2_idx,
+                                              base_network.IS_TRAINING: False})
     values = [np.squeeze(v) for v in values]
     return values
 
@@ -334,17 +333,18 @@ class NormalizedAdvantageFunctionAgent(object):
     while True:
       rewards = []
       losses = []
-      # run an episode
-      state_1 = self.env.reset()
-      # prepare data for updating replay memory at end of episode
-      initial_state = np.copy(state_1)
-      action_reward_state_sequence = []
 
       # run an episode
       if opts.dont_do_rollouts:
         # _not_ gathering experience online
         pass
       else:
+        # start a new episode
+        state_1 = self.env.reset()
+        # prepare data for updating replay memory at end of episode
+        initial_state = np.copy(state_1)
+        action_reward_state_sequence = []
+
         done = False
         while not done:
           # choose action
@@ -362,7 +362,6 @@ class NormalizedAdvantageFunctionAgent(object):
       # do a training step (after waiting for buffer to fill a bit...)
       if self.replay_memory.size() > opts.replay_memory_burn_in:
         # run a set of batches
-        s = time.time()
         for _ in xrange(batches_per_step):
           batch = self.replay_memory.batch(batch_size)
           losses.append(self.naf.train(batch))

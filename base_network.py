@@ -1,6 +1,10 @@
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 
+# TODO: move opts only used in this case to an add_opts method
+
+IS_TRAINING = tf.placeholder(tf.bool, name="is_training")
+
 class Network(object):
   """Common class for handling ops for making / updating target networks."""
 
@@ -57,18 +61,29 @@ class Network(object):
                                   activation_fn=tf.nn.relu)
     return layer
 
-  def simple_conv_net_on(self, input_layer):
-    # TODO: config like hidden_layers_starting_at; whitenen input? batch norm? etc...
-    model = slim.conv2d(input_layer, num_outputs=30, kernel_size=[5, 5], scope='conv1')
+  def simple_conv_net_on(self, input_layer, opts):
+    if opts.use_batch_norm:
+      normalizer_fn = slim.batch_norm
+      normalizer_params = { 'is_training': IS_TRAINING }
+    else:
+      normalizer_fn = None
+      normalizer_params = None
+    model = slim.conv2d(input_layer, num_outputs=30, kernel_size=[5, 5],
+                        normalizer_fn=normalizer_fn,
+                        normalizer_params=normalizer_params,
+                        scope='conv1')
     model = slim.max_pool2d(model, kernel_size=[2, 2], scope='pool1')
-    model = slim.conv2d(model, num_outputs=20, kernel_size=[5, 5], scope='conv2')
+    model = slim.conv2d(model, num_outputs=20, kernel_size=[5, 5], 
+                        normalizer_fn=normalizer_fn,
+                        normalizer_params=normalizer_params,
+                        scope='conv2')
     model = slim.max_pool2d(model, kernel_size=[2, 2], scope='pool2')
     return slim.flatten(model, scope='flat')
 
   def input_state_network(self, input_state, opts):
     # TODO: use in lrpg and ddpg too
     if opts.use_raw_pixels:
-      conv_net = self.simple_conv_net_on(input_state)
+      conv_net = self.simple_conv_net_on(input_state, opts)
       hidden1 = slim.fully_connected(conv_net, 400, scope='hidden1')
       return slim.fully_connected(hidden1, 50, scope='hidden2')
     else:

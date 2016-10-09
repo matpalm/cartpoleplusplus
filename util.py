@@ -1,8 +1,19 @@
 #!/usr/bin/env python
 import datetime, os, time, yaml, sys
+import json
 import numpy as np
 import tensorflow as tf
 import time
+
+def add_opts(parser):
+   parser.add_argument('--gradient-clip', type=float, default=5,
+                       help="do global clipping to this norm")
+   parser.add_argument('--print-gradients', action='store_true', 
+                       help="whether to verbose print all gradients and l2 norms")
+   parser.add_argument('--optimiser', type=str, default="GradientDescent",
+                       help="tf.train.XXXOptimizer to use")
+   parser.add_argument('--optimiser-args', type=str, default="{\"learning_rate\": 0.001}",
+                       help="json serialised args for optimiser constructor")
 
 class StopWatch:
   def reset(self):
@@ -42,6 +53,24 @@ def clip_and_debug_gradients(gradients, opts):
   # done
   return gradients
 
+def collapsed_successive_ranges(values):
+  """reduce an array, e.g. [2,3,4,5,13,14,15], to its successive ranges [2-5, 13-15]"""
+  last, start, out = None, None, []
+  for value in values:
+    if start is None:
+      start = value
+    elif value != last + 1:
+      out.append("%d-%d" % (start, last))
+      start = value
+    last = value
+  out.append("%d-%d" % (start, last))
+  return ", ".join(out)
+
+def construct_optimiser(opts):
+  optimiser_cstr = eval("tf.train.%sOptimizer" % opts.optimiser)
+  args = json.loads(opts.optimiser_args)
+  return optimiser_cstr(**args)
+  
 
 class SaverUtil(object):
   def __init__(self, sess, ckpt_dir="/tmp", save_freq=60):
@@ -110,17 +139,4 @@ class OrnsteinUhlenbeckNoise(object):
     self.state += self.sigma * np.random.randn(self.dim)
     self.state = np.clip(self.max_magnitude, -self.max_magnitude, self.state)
     return np.copy(self.state)
-
-def collapsed_successive_ranges(values):
-  """reduce an array, e.g. [2,3,4,5,13,14,15], to its successive ranges [2-5, 13-15]"""
-  last, start, out = None, None, []
-  for value in values:
-    if start is None:
-      start = value
-    elif value != last + 1:
-      out.append("%d-%d" % (start, last))
-      start = value
-    last = value
-  out.append("%d-%d" % (start, last))
-  return ", ".join(out)
 

@@ -29,15 +29,20 @@ parser.add_argument('--ckpt-freq', type=int, default=300, help="freq (sec) to sa
 parser.add_argument('--batch-size', type=int, default=128, help="training batch size")
 parser.add_argument('--batches-per-step', type=int, default=5,
                     help="number of batches to train per step")
+parser.add_argument('--dont-do-rollouts', action="store_true",
+                    help="by dft we do rollouts to generate data then train after each rollout. if this flag is set we"
+                         " dont do any rollouts. this only makes sense to do if --event-log-in set.")
 parser.add_argument('--target-update-rate', type=float, default=0.0001,
                     help="affine combo for updating target networks each time we run a training batch")
+parser.add_argument('--use-batch-norm', action='store_true',
+                    help="whether to use batch norm on conv layers")
 parser.add_argument('--actor-hidden-layers', type=str, default="100,100,50", help="actor hidden layer sizes")
 parser.add_argument('--critic-hidden-layers', type=str, default="100,100,50", help="critic hidden layer sizes")
 parser.add_argument('--actor-learning-rate', type=float, default=0.001, help="learning rate for actor")
 parser.add_argument('--critic-learning-rate', type=float, default=0.01, help="learning rate for critic")
-parser.add_argument('--gradient-clip', type=float, default=None, help="clip gradients at this l2 norm")
-parser.add_argument('--print-gradients', action='store_true', help="whether to verbose print all gradients and l2 norms")
 parser.add_argument('--discount', type=float, default=0.99, help="discount for RHS of critic bellman equation update")
+parser.add_argument('--event-log-in', type=str, default=None,
+                    help="prepopulate replay memory with entries from this event log")
 parser.add_argument('--replay-memory-size', type=int, default=22000, help="max size of replay memory")
 parser.add_argument('--replay-memory-burn-in', type=int, default=1000, help="dont train from replay memory until it reaches this size")
 parser.add_argument('--eval-action-noise', action='store_true', help="whether to use noise during eval")
@@ -45,6 +50,9 @@ parser.add_argument('--action-noise-theta', type=float, default=0.01,
                     help="OrnsteinUhlenbeckNoise theta (rate of change) param for action exploration")
 parser.add_argument('--action-noise-sigma', type=float, default=0.2,
                     help="OrnsteinUhlenbeckNoise sigma (magnitude) param for action exploration")
+
+util.add_opts(parser)
+
 bullet_cartpole.add_opts(parser)
 opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
@@ -85,7 +93,7 @@ class ActorNetwork(base_network.Network):
     with tf.variable_scope(namespace):
       if opts.use_raw_pixels:
         # simple conv net with one hidden layer on top
-        conv_net = self.simple_conv_net_on(self.input_state)
+        conv_net = self.simple_conv_net_on(self.input_state, opts)
         hidden1 = slim.fully_connected(conv_net, 400, scope='hidden1')
         final_hidden = slim.fully_connected(hidden1, 50, scope='hidden2')
       else:
@@ -124,7 +132,8 @@ class ActorNetwork(base_network.Network):
   def action_given(self, state, add_noise=False):
     # feed explicitly provided state
     actions = tf.get_default_session().run(self.output_action,
-                                           feed_dict={self.input_state: [state]})
+                                           feed_dict={self.input_state: [state],
+                                                      base_network.IS_TRAINING: False})
 
     # NOTE: noise is added _outside_ tf graph. we do this simply because the noisy output
     # is never used for any part of computation graph required for online training. it's
@@ -139,7 +148,8 @@ class ActorNetwork(base_network.Network):
     # training actor only requires state since we are trying to maximise the
     # q_value according to the critic.
     tf.get_default_session().run(self.train_op,
-                                 feed_dict={self.input_state_idx: state_idx})
+                                 feed_dict={self.input_state_idx: state_idx,
+                                            base_network.IS_TRAINING: True})
 
 
 class CriticNetwork(base_network.Network):
@@ -161,7 +171,7 @@ class CriticNetwork(base_network.Network):
 
     with tf.variable_scope(namespace):
       if opts.use_raw_pixels:
-        conv_net = self.simple_conv_net_on(self.input_state)
+        conv_net = self.simple_conv_net_on(self.input_state, opts)
         hidden1 = slim.fully_connected(conv_net, 200, scope='hidden1')
         hidden2 = slim.fully_connected(hidden1, 50, scope='hidden2')
         concat_inputs = tf.concat(1, [hidden2, self.input_action])
@@ -231,7 +241,8 @@ class CriticNetwork(base_network.Network):
                                             self.input_action: batch.action,
                                             self.reward: batch.reward,
                                             self.terminal_mask: batch.terminal_mask,
-                                            self.input_state_2_idx: batch.state_2_idx})
+                                            self.input_state_2_idx: batch.state_2_idx,
+                                            base_network.IS_TRAINING: True})
 
   def check_loss(self, batch):
     return tf.get_default_session().run([self.temporal_difference_loss, 
@@ -241,7 +252,8 @@ class CriticNetwork(base_network.Network):
                                                    self.input_action: batch.action,
                                                    self.reward: batch.reward,
                                                    self.terminal_mask: batch.terminal_mask,
-                                                   self.input_state_2_idx: batch.state_2_idx})
+                                                   self.input_state_2_idx: batch.state_2_idx,
+                                                   base_network.IS_TRAINING: False})
 
 
 class DeepDeterministicPolicyGradientAgent(object):
@@ -275,11 +287,14 @@ class DeepDeterministicPolicyGradientAgent(object):
     self.actor.init_ops_for_training(self.critic)
     self.critic.init_ops_for_training(self.target_critic)
 
-  def hook_up_target_networks(self, target_update_rate):
+  def post_var_init_setup(self):
+    # prepopulate replay memory (if configured to do so)
+    if opts.event_log_in:
+      self.replay_memory.reset_from_event_log(opts.event_log_in)
     # hook networks up to their targets
     # ( does one off clobber to init all vars in target network )
-    self.target_actor.set_as_target_network_for(self.actor, target_update_rate)
-    self.target_critic.set_as_target_network_for(self.critic, target_update_rate)
+    self.target_actor.set_as_target_network_for(self.actor, opts.target_update_rate)
+    self.target_critic.set_as_target_network_for(self.critic, opts.target_update_rate)
 
 
   def run_training(self, max_num_actions, max_run_time, batch_size, batches_per_step,
@@ -292,48 +307,54 @@ class DeepDeterministicPolicyGradientAgent(object):
     n = 0
     while True:      
       rewards = []
-      # start a new episode
-      state_1 = self.env.reset()
-      # prepare data for updating replay memory at end of episode
-      initial_state = np.copy(state_1)
-      action_reward_state_sequence = []
 
-      done = False
-      while not done:
-        # choose action
-        action = self.actor.action_given(state_1, add_noise=True)
-        # take action step in env
-        state_2, reward, done, _ = self.env.step(action)
-        rewards.append(reward)
-        # cache for adding to replay memory
-        action_reward_state_sequence.append((action, reward, np.copy(state_2)))
-        # do a training step (after waiting for buffer to fill a bit...)
-        if self.replay_memory.size() > opts.replay_memory_burn_in:
-          # run a set of batches
-          for _ in xrange(batches_per_step):
-            batch = self.replay_memory.batch(batch_size)
-            self.actor.train(batch.state_1_idx)
-            self.critic.train(batch)
-          # update target nets
-          self.target_actor.update_weights()
-          self.target_critic.update_weights()
-          # do debug (if requested) on last batch
-          if VERBOSE_DEBUG:
-            print "-----"
-            #print "state_1", state_1
-            print "action\n", batch.action.T
-            print "reward        ", batch.reward.T
-            print "terminal_mask ", batch.terminal_mask.T
-            #print "state_2", state_2
-            td_loss, td, q_value = self.critic.check_loss(batch)
-            print "temporal_difference_loss", td_loss
-            print "temporal_difference", td.T
-            print "q_value", q_value.T
-        # roll state for next step.
-        state_1 = state_2
+      # run an episode
+      if opts.dont_do_rollouts:
+        # _not_ gathering experience online
+        pass
+      else:
+        # start a new episode
+        state_1 = self.env.reset()
+        # prepare data for updating replay memory at end of episode
+        initial_state = np.copy(state_1)
+        action_reward_state_sequence = []
 
-      # at end of episode update replay memory
-      self.replay_memory.add_episode(initial_state, action_reward_state_sequence)
+        done = False
+        while not done:
+          # choose action
+          action = self.actor.action_given(state_1, add_noise=True)
+          # take action step in env
+          state_2, reward, done, _ = self.env.step(action)
+          rewards.append(reward)
+          # cache for adding to replay memory
+          action_reward_state_sequence.append((action, reward, np.copy(state_2)))
+          # roll state for next step.
+          state_1 = state_2
+        # at end of episode update replay memory
+        self.replay_memory.add_episode(initial_state, action_reward_state_sequence)
+
+      # do a training step (after waiting for buffer to fill a bit...)
+      if self.replay_memory.size() > opts.replay_memory_burn_in:
+        # run a set of batches
+        for _ in xrange(batches_per_step):
+          batch = self.replay_memory.batch(batch_size)
+          self.actor.train(batch.state_1_idx)
+          self.critic.train(batch)
+        # update target nets
+        self.target_actor.update_weights()
+        self.target_critic.update_weights()
+        # do debug (if requested) on last batch
+        if VERBOSE_DEBUG:
+          print "-----"
+          #print "state_1", state_1
+          print "action\n", batch.action.T
+          print "reward        ", batch.reward.T
+          print "terminal_mask ", batch.terminal_mask.T
+          #print "state_2", state_2
+          td_loss, td, q_value = self.critic.check_loss(batch)
+          print "temporal_difference_loss", td_loss
+          print "temporal_difference", td.T
+          print "q_value", q_value.T
 
       # dump some stats and progress info
       stats = collections.OrderedDict()
@@ -411,9 +432,8 @@ def main():
       print >>sys.stderr, v.name, v.get_shape()
 
     # now that we've either init'd from scratch, or loaded up a checkpoint,
-    # we can hook together target networks
-    # TODO: support pre loading of replay memory... see naf_cartpole
-    agent.hook_up_target_networks(opts.target_update_rate)
+    # we can do any required post init work.
+    agent.post_var_init_setup()
 
     # run either eval or training
     if opts.num_eval > 0:

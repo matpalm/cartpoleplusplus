@@ -30,13 +30,14 @@ parser.add_argument('--target-update-rate', type=float, default=0.0001,
                     help="REFACTORING WIP")
 parser.add_argument('--hidden-layers', type=str, default="100,50", help="hidden layer sizes")
 parser.add_argument('--learning-rate', type=float, default=0.001, help="learning rate")
-parser.add_argument('--gradient-clip', type=float, default=None, help="clip gradients at this l2 norm")
-parser.add_argument('--print-gradients', action='store_true', help="whether to verbose print all gradients and l2 norms")
 parser.add_argument('--num-train-batches', type=int, default=10,
                     help="number of training batches to run")
 parser.add_argument('--rollouts-per-batch', type=int, default=10,
                     help="number of rollouts to run for each training batch")
 parser.add_argument('--eval-action-noise', action='store_true', help="whether to use noise during eval")
+
+util.add_opts(parser)
+
 bullet_cartpole.add_opts(parser)
 opts = parser.parse_args()
 sys.stderr.write("%s\n" % opts)
@@ -121,8 +122,9 @@ class LikelihoodRatioPolicyGradientAgent(base_network.Network):
                                    util.standardise(self.advantages))
     self.loss = -tf.reduce_sum(action_mul_advantages)  # recall: we are maximising.
     with tf.variable_scope("optimiser"):
+      # dynamically create optimiser based on opts
+      optimiser = util.construct_optimiser(opts)
       # calc gradients
-      optimiser = tf.train.GradientDescentOptimizer(opts.learning_rate)
       gradients = optimiser.compute_gradients(self.loss)
       # potentially clip and wrap with debugging tf.Print
       gradients = util.clip_and_debug_gradients(gradients, opts)
