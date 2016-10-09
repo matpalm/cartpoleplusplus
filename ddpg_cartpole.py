@@ -99,7 +99,7 @@ class ActorNetwork(base_network.Network):
       self.output_action = slim.fully_connected(scope='output_action',
                                                 inputs=final_hidden,
                                                 num_outputs=action_dim,
-                                                weights_regularizer=self.l2(),
+                                                weights_regularizer=tf.contrib.layers.l2_regularizer(0.01),
                                                 activation_fn=tf.nn.tanh)
 
   def init_ops_for_training(self, critic):
@@ -177,7 +177,7 @@ class CriticNetwork(base_network.Network):
       self.q_value = slim.fully_connected(scope='q_value',
                                           inputs=final_hidden,
                                           num_outputs=1,
-                                          weights_regularizer=self.l2(),
+                                          weights_regularizer=tf.contrib.layers.l2_regularizer(0.01),
                                           activation_fn=None)
 
   def init_ops_for_training(self, target_critic):
