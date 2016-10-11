@@ -25,7 +25,7 @@ parser.add_argument('--max-run-time', type=int, default=0,
                     help="train for (at least) this number of seconds (always finish current episode)"
                          " ignore if <=0")
 parser.add_argument('--ckpt-dir', type=str, default=None, help="if set save ckpts to this dir")
-parser.add_argument('--ckpt-freq', type=int, default=300, help="freq (sec) to save ckpts")
+parser.add_argument('--ckpt-freq', type=int, default=3600, help="freq (sec) to save ckpts")
 parser.add_argument('--target-update-rate', type=float, default=0.0001,
                     help="REFACTORING WIP")
 parser.add_argument('--hidden-layers', type=str, default="100,50", help="hidden layer sizes")

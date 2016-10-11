@@ -26,7 +26,7 @@ parser.add_argument('--max-run-time', type=int, default=0,
                          " current episode) ignore if <=0")
 parser.add_argument('--ckpt-dir', type=str, default=None,
                     help="if set save ckpts to this dir")
-parser.add_argument('--ckpt-freq', type=int, default=300, help="freq (sec) to save ckpts")
+parser.add_argument('--ckpt-freq', type=int, default=3600, help="freq (sec) to save ckpts")
 parser.add_argument('--batch-size', type=int, default=128, help="training batch size")
 parser.add_argument('--batches-per-step', type=int, default=5,
                     help="number of batches to train per step")
