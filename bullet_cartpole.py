@@ -18,6 +18,10 @@ def add_opts(parser):
   parser.add_argument('--initial-force', type=float, default=55.0,
                       help="magnitude of initial push, in random direction")
   parser.add_argument('--no-random-theta', action='store_true')
+  parser.add_argument('--action-repeats', type=int, default=2,
+                      help="number of action repeats")
+  parser.add_argument('--steps-per-repeat', type=int, default=5,
+                      help="number of sim steps per repeat")
   parser.add_argument('--event-log-out', type=str, default=None,
                       help="path to record event log.")
   parser.add_argument('--max-episode-len', type=int, default=200,
@@ -41,7 +45,7 @@ class BulletCartpole(gym.Env):
    'video.frames_per_second' : 50
   }
 
-  def __init__(self, opts, discrete_actions, repeats=2):
+  def __init__(self, opts, discrete_actions):
     self.gui = opts.gui
     self.delay = opts.delay if self.gui else 0.0
 
@@ -92,7 +96,10 @@ class BulletCartpole(gym.Env):
       self.event_log = None
 
     # how many time to repeat each action per step().
-    self.repeats = repeats
+    # and how many sim steps to do per state capture
+    # (total number of sim steps = action_repeats * steps_per_repeat
+    self.repeats = opts.action_repeats
+    self.steps_per_repeat = opts.steps_per_repeat
 
     # whether we are using raw pixels for state or just pole + cart pose
     self.use_raw_pixels = opts.use_raw_pixels
@@ -162,8 +169,7 @@ class BulletCartpole(gym.Env):
     # step simulation forward. at the end of each repeat we set part of the step's
     # state by capture the cart & pole state in some form.
     for r in xrange(self.repeats):
-      for _ in xrange(5):
-        # step forward 5 times; x5 with x2 repeats corresponds to x10 per step
+      for _ in xrange(self.steps_per_repeat):
         p.stepSimulation()
         p.applyExternalForce(self.cart, -1, (fx,fy,0), (0,0,0), p.WORLD_FRAME)
         if self.delay > 0:
