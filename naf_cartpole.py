@@ -58,7 +58,7 @@ parser.add_argument('--eval-action-noise', action='store_true',
 parser.add_argument('--action-noise-theta', type=float, default=0.01,
                     help="OrnsteinUhlenbeckNoise theta (rate of change) param for action"
                          " exploration")
-parser.add_argument('--action-noise-sigma', type=float, default=0.2,
+parser.add_argument('--action-noise-sigma', type=float, default=0.05,
                     help="OrnsteinUhlenbeckNoise sigma (magnitude) param for action"
                          " exploration")
 
@@ -158,9 +158,11 @@ class NafNetwork(base_network.Network):
           input_representation = value_net.input_state_representation
         else:
           input_representation = self.input_state_network(self.input_state, opts)
+        weights_initializer = tf.random_uniform_initializer(-0.001, 0.001)
         self.output_action = slim.fully_connected(scope='fc',
                                                   inputs=input_representation,
                                                   num_outputs=action_dim,
+                                                  weights_initializer=weights_initializer,
                                                   weights_regularizer=tf.contrib.layers.l2_regularizer(0.01),
                                                   activation_fn=tf.nn.tanh)  # (batch, action_dim)
 
@@ -255,9 +257,14 @@ class NafNetwork(base_network.Network):
     actions = tf.get_default_session().run(self.output_action,
                                            feed_dict={self.input_state: [state],
                                                       base_network.IS_TRAINING: False})
+
     if add_noise:
+      if VERBOSE_DEBUG:
+        pre_noise = str(actions)
       actions[0] += self.exploration_noise.sample()
       actions = np.clip(1, -1, actions)  # action output is _always_ (-1, 1)
+      if VERBOSE_DEBUG:
+        print "TRAIN action_given pre_noise %s post_noise %s" % (pre_noise, actions)
     return actions
 
   def train(self, batch):
@@ -369,7 +376,6 @@ class NormalizedAdvantageFunctionAgent(object):
         self.target_value_net.update_weights()
         # do debug (if requested) on last batch
         if VERBOSE_DEBUG:
-          self.replay_memory.dump()
           print "-----"
           print "> BATCH"
           print "state_1", batch.state_1_idx.T

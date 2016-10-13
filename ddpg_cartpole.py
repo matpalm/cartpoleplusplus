@@ -48,7 +48,7 @@ parser.add_argument('--replay-memory-burn-in', type=int, default=1000, help="don
 parser.add_argument('--eval-action-noise', action='store_true', help="whether to use noise during eval")
 parser.add_argument('--action-noise-theta', type=float, default=0.01,
                     help="OrnsteinUhlenbeckNoise theta (rate of change) param for action exploration")
-parser.add_argument('--action-noise-sigma', type=float, default=0.2,
+parser.add_argument('--action-noise-sigma', type=float, default=0.05,
                     help="OrnsteinUhlenbeckNoise sigma (magnitude) param for action exploration")
 
 util.add_opts(parser)
@@ -104,9 +104,12 @@ class ActorNetwork(base_network.Network):
 
       # TODO: add dropout for both nets!
 
+      # action dim output. note: actors out is (-1, 1) and scaled in env as required.
+      weights_initializer = tf.random_uniform_initializer(-0.001, 0.001)
       self.output_action = slim.fully_connected(scope='output_action',
                                                 inputs=final_hidden,
                                                 num_outputs=action_dim,
+                                                weights_initializer=weights_initializer,
                                                 weights_regularizer=tf.contrib.layers.l2_regularizer(0.01),
                                                 activation_fn=tf.nn.tanh)
 
@@ -139,8 +142,12 @@ class ActorNetwork(base_network.Network):
     # is never used for any part of computation graph required for online training. it's
     # only used during training after being the replay buffer.
     if add_noise:
+      if VERBOSE_DEBUG:
+        pre_noise = str(actions)
       actions[0] += self.exploration_noise.sample()
       actions = np.clip(1, -1, actions)  # action output is _always_ (-1, 1)
+      if VERBOSE_DEBUG:
+        print "TRAIN action_given pre_noise %s post_noise %s" % (pre_noise, actions)
 
     return actions
 
