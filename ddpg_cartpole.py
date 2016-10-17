@@ -91,19 +91,8 @@ class ActorNetwork(base_network.Network):
                                                          opts.action_noise_sigma)
 
     with tf.variable_scope(namespace):
-      if opts.use_raw_pixels:
-        # simple conv net with one hidden layer on top
-        conv_net = self.simple_conv_net_on(self.input_state, opts)
-        hidden1 = slim.fully_connected(conv_net, 400, scope='hidden1')
-        final_hidden = slim.fully_connected(hidden1, 50, scope='hidden2')
-      else:
-        # stack of hidden layers on flattened input; (batch,2,2,7) -> (batch,28)
-        flat_input_state = slim.flatten(input_state, scope='flat')
-        final_hidden = self.hidden_layers_starting_at(flat_input_state,
-                                                      opts.actor_hidden_layers)
-
-      # TODO: add dropout for both nets!
-
+      opts.hidden_layers = opts.actor_hidden_layers
+      final_hidden = self.input_state_network(self.input_state, opts)
       # action dim output. note: actors out is (-1, 1) and scaled in env as required.
       weights_initializer = tf.random_uniform_initializer(-0.001, 0.001)
       self.output_action = slim.fully_connected(scope='output_action',
