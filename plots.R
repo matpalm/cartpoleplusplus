@@ -1,5 +1,10 @@
 library(ggplot2)
 
+df = read.delim("/tmp/f", s=" ", h=F, col.names=c("run", "length", "reward"))
+df$n = 1:nrow(df)
+head(df)
+ggplot(df, aes())
+
 # df = read.delim("/tmp/actions", h=T, sep=" ")
 # png("/tmp/plots/00a_pre_noise_x_y_scatter.png", width=300, height=300)
 # ggplot(df[df$type=='pre',], aes(x, y)) + geom_bin2d() + labs(title="x pre noise")
