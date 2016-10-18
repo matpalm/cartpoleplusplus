@@ -26,10 +26,8 @@ parser.add_argument('--max-run-time', type=int, default=0,
                          " ignore if <=0")
 parser.add_argument('--ckpt-dir', type=str, default=None, help="if set save ckpts to this dir")
 parser.add_argument('--ckpt-freq', type=int, default=3600, help="freq (sec) to save ckpts")
-parser.add_argument('--target-update-rate', type=float, default=0.0001,
-                    help="REFACTORING WIP")
 parser.add_argument('--hidden-layers', type=str, default="100,50", help="hidden layer sizes")
-parser.add_argument('--learning-rate', type=float, default=0.001, help="learning rate")
+parser.add_argument('--learning-rate', type=float, default=0.0001, help="learning rate")
 parser.add_argument('--num-train-batches', type=int, default=10,
                     help="number of training batches to run")
 parser.add_argument('--rollouts-per-batch', type=int, default=10,
@@ -172,8 +170,6 @@ class LikelihoodRatioPolicyGradientAgent(base_network.Network):
                                                       self.advantages: advantages})
     return float(loss)
 
-  def hook_up_target_networks(self, target_update_rate):
-	pass
 
   def run_training(self, max_num_actions, max_run_time, rollouts_per_batch,
                    saver_util):
@@ -270,10 +266,6 @@ def main():
       sess.run(tf.initialize_all_variables())
     for v in tf.all_variables():
       print >>sys.stderr, v.name, v.get_shape()
-
-    # now that we've either init'd from scratch, or loaded up a checkpoint,
-    # we can hook together target networks
-    agent.hook_up_target_networks(opts.target_update_rate)
 
     # run either eval or training
     if opts.num_eval > 0:
