@@ -438,8 +438,8 @@ class NormalizedAdvantageFunctionAgent(object):
       while not done:
         action = self.naf.action_given(state, add_noise)
         state, reward, done, _ = self.env.step(action)
-        print "EVALSTEP e%d s%d action=%s (l2=%s)" % (i, steps, action,
-                                                      np.linalg.norm(action))
+        print "EVALSTEP e%d s%d action=%s (l2=%s) => reward %s" % (i, steps, action,
+                                                                   np.linalg.norm(action), reward)
         total_reward += reward
         steps += 1
       print "EVAL", i, steps, total_reward

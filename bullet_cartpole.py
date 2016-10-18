@@ -32,18 +32,14 @@ def add_opts(parser):
                       help="if --use-raw-pixels render with this width")
   parser.add_argument('--render-height', type=int, default=50,
                       help="if --use-raw-pixels render with this height")
+  parser.add_argument('--reward-calc', type=str, default='fixed',
+                      help="'fixed': 1 per step. 'angle': 2*max_angle - ox - oy. 'action': 1.5 - |action|. 'angle_action': both angle and action")
 
 def state_fields_of_pose_of(body_id):
   (x,y,z), (a,b,c,d) = p.getBasePositionAndOrientation(body_id)
   return np.array([x,y,z,a,b,c,d])
 
 class BulletCartpole(gym.Env):
-
-  # required fo keras-rl hooks, though not used
-  metadata = {
-   'render.modes': ['human', 'rgb_array'],
-   'video.frames_per_second' : 50
-  }
 
   def __init__(self, opts, discrete_actions):
     self.gui = opts.gui
@@ -122,6 +118,10 @@ class BulletCartpole(gym.Env):
     float_max = np.finfo(np.float32).max
     self.observation_space = gym.spaces.Box(-float_max, float_max, state_shape)
 
+    # check reward type
+    assert opts.reward_calc in ['fixed', 'angle', 'action', 'angle_action']
+    self.reward_calc = opts.reward_calc
+
     # no state until reset.
     self.state = np.empty(state_shape, dtype=np.float32)
 
@@ -178,25 +178,16 @@ class BulletCartpole(gym.Env):
 
     self.steps += 1
 
-    # calculate reward.
-    reward = 1.0
-#    if self.discrete_actions:
-#      reward = 1.0
-#    else:
-#      # base reward of 1.0 but linear ramp up to 5.0 if you don't apply much force.
-#      max_abs_force = self.action_force * 2
-#      abs_force = abs(fx) + abs(fy)
-#      reward = 1.0 + 4.0 - (4.0 * abs_force / max_abs_force)
-
     # Check for out of bounds by position or orientation on pole.
     # we (re)fetch pose explicitly rather than depending on fields in state.
     (x, y, _z), orient = p.getBasePositionAndOrientation(self.pole)
-    ox, oy, _oz = p.getEulerFromQuaternion(orient)
+    ox, oy, _oz = p.getEulerFromQuaternion(orient)  # roll / pitch / yaw
     if abs(x) > self.pos_threshold or abs(y) > self.pos_threshold:
       info['done_reason'] = 'out of position bounds'
       self.done = True
       reward = 0.0
     elif abs(ox) > self.angle_threshold or abs(oy) > self.angle_threshold:
+      # TODO: probably better to do explicit angle from z?
       info['done_reason'] = 'out of orientation bounds'
       self.done = True
       reward = 0.0
@@ -204,6 +195,16 @@ class BulletCartpole(gym.Env):
     if self.steps >= self.max_episode_len:
       info['done_reason'] = 'episode length'
       self.done = True
+
+    # calc reward, fixed base of 1.0
+    reward = 1.0
+    if self.reward_calc == "angle" or self.reward_calc == "angle_action":
+      # clip to zero since angles can be past threshold
+      reward += max(0, 2 * self.angle_threshold - np.abs(ox) - np.abs(oy))
+    if self.reward_calc == "action" or self.reward_calc == "angle_action":
+      # max norm will be sqr(2) ~= 1.4.
+      # reward is already 1.0 to add another 0.5 as o0.1 buffer from zero
+      reward += 0.5 - np.linalg.norm(action[0])
 
     # log this event.
     # TODO in the --use-raw-pixels case would be nice to have poses in state repeats too.
