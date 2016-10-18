@@ -8,8 +8,6 @@ import util
 
 Batch = collections.namedtuple("Batch", "state_1_idx action reward terminal_mask state_2_idx")
 
-# TODO: support loading from existing event.log
-
 class ReplayMemory(object):
   def __init__(self, sess, buffer_size, state_shape, action_dim, load_factor=1.5):
     assert load_factor >= 1.5, "load_factor has to be at least 1.5"
