@@ -8,10 +8,12 @@ message Render {
 }
 
 message State {
-  // poses are (px, py, pz, oa, ob, oc, od)
+  // 7d cart pose (px, py, pz, oa, ob, oc, od)
   repeated float cart_pose = 1;
+  // 7d pole pose (px, py, pz, oa, ob, oc, od)
   repeated float pole_pose = 2;
-  optional Render render = 3;
+  // 1+ renders, depending on number of cameras
+  repeated Render render = 3;
 }
 
 // Event corresponds to output from one step of simulation
@@ -20,8 +22,11 @@ message State {
 // or is_terminal.
 // Assume last event in episode is terminal event (done=True)
 message Event {
+  // N dimensional action
   repeated float action = 1;
+  // 1 or more states based on action_repeats
   repeated State state = 2;
+  // single reward value
   optional float reward = 3;
 }
 
