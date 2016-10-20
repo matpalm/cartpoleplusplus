@@ -3,7 +3,7 @@
 cartpole++ is a non trivial 3d version of cartpole 
 simulated using [bullet physics](http://bulletphysics.org/) where the pole _isn't_ connected to the cart.
 
-![cartpole](cartpole.png)
+![cartpole](cartpole.gif)
 
 this repo contains a [gym env](https://gym.openai.com/) for this cartpole as well as implementations for training with ...
 
