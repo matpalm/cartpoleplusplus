@@ -46,7 +46,7 @@ env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=True)
 import base_network
 import tensorflow.contrib.slim as slim
 
-VERBOSE_DEBUG = False
+VERBOSE_DEBUG = True
 def toggle_verbose_debug(signal, frame):
   global VERBOSE_DEBUG
   VERBOSE_DEBUG = not VERBOSE_DEBUG
@@ -164,10 +164,21 @@ class LikelihoodRatioPolicyGradientAgent(base_network.Network):
 
   def train(self, observations, actions, advantages):
     """ take one training step given observations, actions and subsequent advantages"""
-    _, loss = tf.get_default_session().run([self.train_op, self.loss],
-                                           feed_dict={self.observations: observations,
-                                                      self.actions: actions,
-                                                      self.advantages: advantages})
+    if VERBOSE_DEBUG:
+      print "TRAIN"
+      print "observations", np.stack(observations)
+      print "actions", actions
+      print "advantages", advantages
+      _, loss = tf.get_default_session().run([self.train_op, self.loss],
+                                             feed_dict={self.observations: observations,
+                                                        self.actions: actions,
+                                                        self.advantages: advantages})
+
+    else:
+      _, loss = tf.get_default_session().run([self.train_op, self.loss],
+                                             feed_dict={self.observations: observations,
+                                                        self.actions: actions,
+                                                        self.advantages: advantages})
     return float(loss)
 
 
