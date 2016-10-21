@@ -258,12 +258,13 @@ def main():
   with tf.Session(config=config) as sess:
     agent = LikelihoodRatioPolicyGradientAgent(env)
 
-    # setup saver util and either load latest ckpt, or init if none...
+    # setup saver util and load latest ckpt
     saver_util = None
     if opts.ckpt_dir is not None:
       saver_util = util.SaverUtil(sess, opts.ckpt_dir, opts.ckpt_freq)
-    else:
-      sess.run(tf.initialize_all_variables())
+
+    # init any remaining vars (eg replay memory)
+    sess.run(tf.initialize_all_variables())
     for v in tf.all_variables():
       print >>sys.stderr, v.name, v.get_shape()
 
