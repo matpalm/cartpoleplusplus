@@ -68,6 +68,13 @@ class Network(object):
     else:
       normalizer_fn = None
       normalizer_params = None
+
+    # state is (batch, height, width, rgb, camera_idx, repeat)
+    # rollup rgb, camera_idx and repeat into num_channels
+    height, width = map(int, input_layer.get_shape()[1:3])
+    num_channels = input_layer.get_shape()[3:].num_elements()
+    input_layer = tf.reshape(input_layer, [-1, height, width, num_channels])
+
     model = slim.conv2d(input_layer, num_outputs=30, kernel_size=[5, 5],
                         normalizer_fn=normalizer_fn,
                         normalizer_params=normalizer_params,

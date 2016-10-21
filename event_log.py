@@ -20,12 +20,18 @@ def png_to_rgb(png_bytes):
 
 def read_state_from_event(event):
   """unpack state from event (i.e. inverse of add_state_to_event)"""
-  if event.state[0].HasField("render"):
+  if len(event.state[0].render) > 0:
     num_repeats = len(event.state)
-    eg_render = event.state[0].render
-    state = np.empty((eg_render.height, eg_render.width, num_repeats*3))
-    for i, s in enumerate(event.state):
-      state[:,:,3*i:3*(i+1)] = png_to_rgb(s.render.png_bytes)
+    num_cameras = len(event.state[0].render)
+    eg_render = event.state[0].render[0]
+    state = np.empty((eg_render.height, eg_render.width, 3,
+                      num_cameras, num_repeats))
+    print "state", state.shape
+    for r_idx in range(num_repeats):
+      repeat = event.state[r_idx]
+      for c_idx in range(num_cameras):
+        png_bytes = repeat.render[c_idx].png_bytes
+        state[:,:,:,c_idx,r_idx] = png_to_rgb(png_bytes)
   else:
     state = np.empty((len(event.state), 2, 7))
     for i, s in enumerate(event.state):
@@ -56,13 +62,18 @@ class EventLog(object):
     """pack state into event"""
     if self.use_raw_pixels:
       # TODO: be nice to have pose info here too in the pixel case...
-      for r in range(state.shape[2] / 3):  # 3 channels per action repeat
+      num_repeats = state.shape[4]
+      for r_idx in range(num_repeats):
         s = event.state.add()
-        s.render.width = state.shape[1]
-        s.render.height = state.shape[0]
-        s.render.png_bytes = rgb_to_png(state[:,:,3*r:3*(r+1)])
+        num_cameras = state.shape[3]
+        for c_idx in range(num_cameras):
+          render = s.render.add()
+          render.width = state.shape[1]
+          render.height = state.shape[0]
+          render.png_bytes = rgb_to_png(state[:,:,:,c_idx,r_idx])
     else:
-      for r in range(state.shape[0]):
+      num_repeats = state.shape[0]
+      for r in range(num_repeats):
         s = event.state.add()
         s.cart_pose.extend(map(float, state[r][0]))
         s.pole_pose.extend(map(float, state[r][1]))
@@ -140,25 +151,29 @@ if __name__ == "__main__":
     if opts.img_output_dir is not None:
       dir = "%s/ep_%05d" % (opts.img_output_dir, episode_id)
       make_dir(dir)
+      make_dir(dir + "/c0")  # HACK: assume only max two cameras
+      make_dir(dir + "/c1")
       for event_id, event in enumerate(episode.event):
         for state_id, state in enumerate(event.state):
-          # open RGB png in an image canvas
-          img = Image.open(StringIO.StringIO(state.render.png_bytes))
-          if opts.img_debug_overlay:
-            canvas = ImageDraw.Draw(img)
-            # draw episode and event number in top left
-            canvas.text((0, 0), "%d %d" % (episode_id, event_id), fill="black")
-            # draw simple fx/fy representation in bottom right...
-            # a bounding box
-            bx, by, bw = 40, 40, 10
-            canvas.line((bx-bw,by-bw, bx+bw,by-bw, bx+bw,by+bw, bx-bw,by+bw, bx-bw,by-bw), fill="black")
-            # then a simple fx/fy line
-            fx, fy = event.action[0], event.action[1]
-            canvas.line((bx,by, bx+(fx*bw), by+(fy*bw)), fill="black")
-          # write it out
-          img = img.resize((200, 200))
-          filename = "%s/ev_%05d_r%d.png" % (dir, event_id, state_id)
-          img.save(filename)
+          for camera_id, render in enumerate(state.render):
+            assert camera_id in [0, 1], "fix hack above"
+            # open RGB png in an image canvas
+            img = Image.open(StringIO.StringIO(render.png_bytes))
+            if opts.img_debug_overlay:
+              canvas = ImageDraw.Draw(img)
+              # draw episode and event number in top left
+              canvas.text((0, 0), "%d %d" % (episode_id, event_id), fill="black")
+              # draw simple fx/fy representation in bottom right...
+              # a bounding box
+              bx, by, bw = 40, 40, 10
+              canvas.line((bx-bw,by-bw, bx+bw,by-bw, bx+bw,by+bw, bx-bw,by+bw, bx-bw,by-bw), fill="black")
+              # then a simple fx/fy line
+              fx, fy = event.action[0], event.action[1]
+              canvas.line((bx,by, bx+(fx*bw), by+(fy*bw)), fill="black")
+            # write it out
+            img = img.resize((200, 200))
+            filename = "%s/c%d/e%05d_r%d.png" % (dir, camera_id, event_id, state_id)
+            img.save(filename)
   print >>sys.stderr, "read", total_num_read_episodes, "episodes for a total of", total_num_read_events, "events"
 
 

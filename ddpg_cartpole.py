@@ -422,8 +422,7 @@ def main():
     saver_util = None
     if opts.ckpt_dir is not None:
       saver_util = util.SaverUtil(sess, opts.ckpt_dir, opts.ckpt_freq)
-    else:
-      sess.run(tf.initialize_all_variables())
+    sess.run(tf.initialize_all_variables())
     for v in tf.all_variables():
       print >>sys.stderr, v.name, v.get_shape()
 

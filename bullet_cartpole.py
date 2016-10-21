@@ -22,6 +22,8 @@ def add_opts(parser):
                       help="number of action repeats")
   parser.add_argument('--steps-per-repeat', type=int, default=5,
                       help="number of sim steps per repeat")
+  parser.add_argument('--num-cameras', type=int, default=1,
+                      help="how many camera points to render; 1 or 2")
   parser.add_argument('--event-log-out', type=str, default=None,
                       help="path to record event log.")
   parser.add_argument('--max-episode-len', type=int, default=200,
@@ -97,6 +99,13 @@ class BulletCartpole(gym.Env):
     self.repeats = opts.action_repeats
     self.steps_per_repeat = opts.steps_per_repeat
 
+    # how many cameras to render?
+    # if 1 just render from front
+    # if 2 render from front and 90deg side
+    if opts.num_cameras not in [1, 2]:
+      raise ValueError("--num-cameras must be 1 or 2")
+    self.num_cameras = opts.num_cameras
+
     # whether we are using raw pixels for state or just pole + cart pose
     self.use_raw_pixels = opts.use_raw_pixels
 
@@ -106,9 +115,11 @@ class BulletCartpole(gym.Env):
 
     # decide observation space
     if self.use_raw_pixels:
-      # in high dimensional case observation space is RGB images (H, W, 3)
-      # concatenated in axis=2, i.e. final shape is (H, W, R*3) for R repeats
-      state_shape = (self.render_height, self.render_width, self.repeats * 3)
+      # in high dimensional case each observation is an RGB images (H, W, 3)
+      # we have R repeats and C cameras resulting in (H, W, 3, R, C)
+      # final state fed to network is concatenated in depth => (H, W, 3*R*C)
+      state_shape = (self.render_height, self.render_width, 3,
+                     self.num_cameras, self.repeats)
     else:
       # in the low dimensional case obs space for problem is (R, 2, 7)
       #  R = number of repeats
@@ -175,7 +186,6 @@ class BulletCartpole(gym.Env):
         if self.delay > 0:
           time.sleep(self.delay)
       self.set_state_element_for_repeat(r)
-
     self.steps += 1
 
     # Check for out of bounds by position or orientation on pole.
@@ -214,8 +224,8 @@ class BulletCartpole(gym.Env):
     # return observation
     return np.copy(self.state), reward, self.done, info
 
-  def render_rgb(self):
-    cameraPos = (0.5, 0.5, 0.5)
+  def render_rgb(self, camera_idx):
+    cameraPos = [(0.0, 0.5, 0.5), (0.5, 0.0, 0.5)][camera_idx]
     targetPos = (0, 0, 0.2)
     cameraUp = (0, 0, 1)
     nearVal, farVal = 1, 20
@@ -232,10 +242,12 @@ class BulletCartpole(gym.Env):
 
   def set_state_element_for_repeat(self, repeat):
     if self.use_raw_pixels:
-      # render gives (50,50,3)
-      # for repeat 0 set this into state at first 3 channels; [50,50,0:3]
-      # for repeat 1 set this into state at second 3 channels; [50,50,3:6] etc
-      self.state[:,:,3*repeat:3*(repeat+1)] = self.render_rgb()
+      # high dim caseis (H, W, 3, C, R)
+      # H, W, 3 -> height x width, 3 channel RGB image
+      # C -> camera_idx; 0 or 1
+      # R -> repeat
+      for camera_idx in range(self.num_cameras):
+        self.state[:,:,:,camera_idx,repeat] = self.render_rgb(camera_idx)
     else:
       # in low dim case state is (R, 2, 7)
       # R -> repeat, 2 -> 2 objects (cart & pole), 7 -> 7d pose
