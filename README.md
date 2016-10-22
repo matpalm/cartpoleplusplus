@@ -30,20 +30,24 @@ reward is simply 1.0 for each step in the episode
 ### states
 
 in both low and high dimensional representations we use the idea of action repeats; 
-per env.step we apply the choosen action 5 times, take a state snapshot, apply the action another 5 times
-and take another snapshot. the delta between these two snapshots provides enough information to infer velocity
-(if the learning algorithm finds that useful to do )
+per env.step we apply the chosen action N times, take a state snapshot and repeat this R times. 
+the deltas between these snapshots provides enough information
+to infer velocity (or acceleration (or jerk)) if the learning algorithm finds that useful to do.
 
-observation state in the low dimensional case is shaped `(2, 2, 7)`
-* axis=0 represents the two snapshots; 0=first, 1=second
-* axis=1 represents the object; 0=cart, 1=pole
-* axis=2 is the 7d pose; 3d postition + 4d quaternion orientation
-* this representation is usually just flattened to (28,) when used
+observation state in the low dimensional case is constructed from the poses of the cart & pole
+* it's shaped `(R, 2, 7)`
+* axis 0 represents the R repeats
+* axis 1 represents the object; 0=cart, 1=pole
+* axis 2 is the 7d pose; 3d postition + 4d quaternion orientation
+* this representation is usually just flattened to (R*14,) when used
 
-the high dimensional state is `(50, 50, 6)` (or whatever width/height your GPU can handle :)
-* `[:,:,0:3]` (the first three channels) is the RGB of a 50x50 render at first snapshot
-* `[:,:,3:6]` (the second three channels) is the RGB of a 50x50 render at the second snapshot
-* TODO: i concatted in the channel axis for ease of use with conv2d but conv3d is available and i should switch...
+the high dimensional state is a rendering of the scene 
+* it's shaped `(height, width, 3, R, C)`
+* axis 0 & 1 are the rendering height/width in pixels
+* axis 2 represents the 3 colour channels; red, green and blue
+* axis 3 represents the R repeats
+* axis 4 represents which camera the image is from; we have the option of rendering with one camera or two (located at right angles to each other)
+* this representation is flattened to have shape `(H, W, 3*R*C)`. we do this for ease of use of conv2d operations. (TODO: try conv3d instead)
 
 ![eg_render](eg_render.png)
 
