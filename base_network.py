@@ -1,5 +1,8 @@
+import operator
+import sys
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
+import util
 
 # TODO: move opts only used in this case to an add_opts method
 
@@ -74,17 +77,32 @@ class Network(object):
     height, width = map(int, input_layer.get_shape()[1:3])
     num_channels = input_layer.get_shape()[3:].num_elements()
     input_layer = tf.reshape(input_layer, [-1, height, width, num_channels])
+    print >>sys.stderr, "input_layer", util.shape_and_product_of(input_layer)
 
-    model = slim.conv2d(input_layer, num_outputs=30, kernel_size=[5, 5],
+    # TODO: num_outputs here are really dependant on the incoming channels,
+    # which depend on the #repeats & cameras so they should be a param.
+
+    model = slim.conv2d(input_layer, num_outputs=20, kernel_size=[4, 4],
                         normalizer_fn=normalizer_fn,
                         normalizer_params=normalizer_params,
                         scope='conv1')
     model = slim.max_pool2d(model, kernel_size=[2, 2], scope='pool1')
-    model = slim.conv2d(model, num_outputs=20, kernel_size=[5, 5], 
+    print >>sys.stderr, "pool1", util.shape_and_product_of(model)
+
+    model = slim.conv2d(model, num_outputs=40, kernel_size=[4, 4],
                         normalizer_fn=normalizer_fn,
                         normalizer_params=normalizer_params,
                         scope='conv2')
     model = slim.max_pool2d(model, kernel_size=[2, 2], scope='pool2')
+    print >>sys.stderr, "pool2", util.shape_and_product_of(model)
+
+    model = slim.conv2d(model, num_outputs=80, kernel_size=[4, 4],
+                        normalizer_fn=normalizer_fn,
+                        normalizer_params=normalizer_params,
+                        scope='conv3')
+    model = slim.max_pool2d(model, kernel_size=[2, 2], scope='pool2')
+    print >>sys.stderr, "pool3", util.shape_and_product_of(model)
+
     return slim.flatten(model, scope='flat')
 
   def input_state_network(self, input_state, opts):

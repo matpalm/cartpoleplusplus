@@ -70,7 +70,16 @@ def construct_optimiser(opts):
   optimiser_cstr = eval("tf.train.%sOptimizer" % opts.optimiser)
   args = json.loads(opts.optimiser_args)
   return optimiser_cstr(**args)
-  
+
+def shape_and_product_of(t):
+  shape_product = 1
+  for dim in t.get_shape():
+    try:
+      shape_product *= int(dim)
+    except TypeError:
+      # Dimension(None)
+      pass
+  return "%s #%s" % (t.get_shape(), shape_product)
 
 class SaverUtil(object):
   def __init__(self, sess, ckpt_dir="/tmp", save_freq=60):
