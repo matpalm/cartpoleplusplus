@@ -165,29 +165,17 @@ result visually (click through for video)
 
 ### low dimensional continuous control with normalised advantage functions
 
-running now
+```
+./naf_cartpole.py --action-force=100 \
+--action-repeats=3 --steps-per-repeat=4 \
+--optimiser=Momentum --optimiser-args='{"learning_rate": 0.0001, "momentum": 0.9}' \
+```
 
-```
-./naf_cartpole.py \
- --max-num-actions=1000000
-```
+similiar convergence to ddpg
 
 ### high dimensional continuous control with normalised advantage functions
 
-```
-./naf_cartpole.py \
- --use-raw-pixels \
- --max-num-actions=1000000
-```
-
-does OK, but not perfect yet.
-
-## TODOS
-
-* option to share conv stacks (eg in naf where there are three)
-* some tuning, haven't done anything beyond picking random values
-* best practices for networks; processed inputs, batch norm, dropout, etc
-* switch back to async training (as in drivebot project)
+does OK, but not perfect yet. as a human it's hard to do even... (see [the blog post](http://matpalm.com/blog/cartpole_plus_plus/))
 
 ## general utils
 
