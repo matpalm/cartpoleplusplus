@@ -116,7 +116,9 @@ class SaverUtil(object):
     dts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     new_ckpt = "%s/ckpt.%s" % (self.ckpt_dir, dts)
     sys.stderr.write("saving ckpt %s\n" % new_ckpt)
+    start_time = time.time()
     self.saver.save(self.sess, new_ckpt)
+    print "save_took", time.time() - start_time
     self.next_scheduled_save_time = time.time() + self.save_freq
 
   def save_if_required(self):

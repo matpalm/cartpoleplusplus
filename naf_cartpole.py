@@ -351,7 +351,7 @@ class NormalizedAdvantageFunctionAgent(object):
         # prepare data for updating replay memory at end of episode
         initial_state = np.copy(state_1)
         action_reward_state_sequence = []
-
+        episode_start = time.time()
         done = False
         while not done:
           # choose action
@@ -364,14 +364,17 @@ class NormalizedAdvantageFunctionAgent(object):
           # roll state for next step.
           state_1 = state_2
         # at end of episode update replay memory
+        print "episode_took", time.time() - episode_start, len(rewards)
         self.replay_memory.add_episode(initial_state, action_reward_state_sequence)
 
       # do a training step (after waiting for buffer to fill a bit...)
       if self.replay_memory.size() > opts.replay_memory_burn_in:
         # run a set of batches
         for _ in xrange(batches_per_step):
+          batch_start = time.time()
           batch = self.replay_memory.batch(batch_size)
           losses.append(self.naf.train(batch))
+          print "batch_took", time.time() - batch_start
         # update target nets
         self.target_value_net.update_weights()
         # do debug (if requested) on last batch
