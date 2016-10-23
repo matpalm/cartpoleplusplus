@@ -78,13 +78,12 @@ signal.signal(signal.SIGUSR2, set_dump_weights)
 class ActorNetwork(base_network.Network):
   """ the actor represents the learnt policy mapping states to actions"""
 
-  def __init__(self, namespace, input_state, input_state_idx, action_dim):
+  def __init__(self, namespace, input_state, action_dim):
     super(ActorNetwork, self).__init__(namespace)
 
     # since state is keep in a tf variable we keep track of the variable itself
     # as well as an indexing placeholder
     self.input_state = input_state
-    self.input_state_idx = input_state_idx
 
     self.exploration_noise = util.OrnsteinUhlenbeckNoise(action_dim, 
                                                          opts.action_noise_theta,
@@ -140,11 +139,11 @@ class ActorNetwork(base_network.Network):
 
     return actions
 
-  def train(self, state_idx):
+  def train(self, state):
     # training actor only requires state since we are trying to maximise the
     # q_value according to the critic.
     tf.get_default_session().run(self.train_op,
-                                 feed_dict={self.input_state_idx: state_idx,
+                                 feed_dict={self.input_state: state,
                                             base_network.IS_TRAINING: True})
 
 
@@ -162,7 +161,6 @@ class CriticNetwork(base_network.Network):
     # too, hence we need to be explicit about cutting it (otherwise training the
     # critic will attempt to train the actor too.
     self.input_state = actor.input_state
-    self.input_state_idx = actor.input_state_idx
     self.input_action = tf.stop_gradient(actor.output_action)
 
     with tf.variable_scope(namespace):
@@ -199,7 +197,6 @@ class CriticNetwork(base_network.Network):
     self.terminal_mask = tf.placeholder(shape=[None, 1], dtype=tf.float32,
                                         name="critic_terminal_mask")
     self.input_state_2 = target_critic.input_state
-    self.input_state_2_idx = target_critic.input_state_idx
     bellman_rhs = self.reward + (self.terminal_mask * opts.discount * target_critic.q_value)
 
     # note: since we are NOT training target networks we stop gradients flowing to them
@@ -233,22 +230,22 @@ class CriticNetwork(base_network.Network):
 
   def train(self, batch):
     tf.get_default_session().run(self.train_op,
-                                 feed_dict={self.input_state_idx: batch.state_1_idx,
+                                 feed_dict={self.input_state: batch.state_1,
                                             self.input_action: batch.action,
                                             self.reward: batch.reward,
                                             self.terminal_mask: batch.terminal_mask,
-                                            self.input_state_2_idx: batch.state_2_idx,
+                                            self.input_state_2: batch.state_2,
                                             base_network.IS_TRAINING: True})
 
   def check_loss(self, batch):
     return tf.get_default_session().run([self.temporal_difference_loss, 
                                          self.temporal_difference,
                                          self.q_value],
-                                        feed_dict={self.input_state_idx: batch.state_1_idx,
+                                        feed_dict={self.input_state: batch.state_1,
                                                    self.input_action: batch.action,
                                                    self.reward: batch.reward,
                                                    self.terminal_mask: batch.terminal_mask,
-                                                   self.input_state_2_idx: batch.state_2_idx,
+                                                   self.input_state_2: batch.state_2,
                                                    base_network.IS_TRAINING: False})
 
 
@@ -261,20 +258,19 @@ class DeepDeterministicPolicyGradientAgent(object):
     # for now, with single machine synchronous training, use a replay memory for training.
     # this replay memory stores states in a Variable (ie potentially in gpu memory)
     # TODO: switch back to async training with multiple replicas (as in drivebot project)
-    self.replay_memory = replay_memory.ReplayMemory(tf.get_default_session(),
-                                                    opts.replay_memory_size,
+    self.replay_memory = replay_memory.ReplayMemory(opts.replay_memory_size,
                                                     state_shape, action_dim)
 
-    # in the --use-raw-pixels case states are very large so we want them stored in tf variable
-    # (i.e. on the gpu). we do batch training by only passing indexs to this memory when
-    # feeding batchs. specifically 's1' is an op that emits state when 's1_idx' placeholder is fed
-    s1, s1_idx, s2, s2_idx = self.replay_memory.batch_ops()
+    # s1 and s2 placeholders
+    batched_state_shape = [None] + list(state_shape)
+    s1 = tf.placeholder(shape=batched_state_shape, dtype=tf.float32)
+    s2 = tf.placeholder(shape=batched_state_shape, dtype=tf.float32)
 
     # initialise base models for actor / critic and their corresponding target networks
     # target_actor is never used for online sampling so doesn't need explore noise.
-    self.actor = ActorNetwork("actor", s1, s1_idx, action_dim)
+    self.actor = ActorNetwork("actor", s1, action_dim)
     self.critic = CriticNetwork("critic", self.actor)
-    self.target_actor = ActorNetwork("target_actor", s2, s2_idx, action_dim)
+    self.target_actor = ActorNetwork("target_actor", s2, action_dim)
     self.target_critic = CriticNetwork("target_critic", self.target_actor)
 
     # setup training ops;
@@ -334,7 +330,7 @@ class DeepDeterministicPolicyGradientAgent(object):
         # run a set of batches
         for _ in xrange(batches_per_step):
           batch = self.replay_memory.batch(batch_size)
-          self.actor.train(batch.state_1_idx)
+          self.actor.train(batch.state_1)
           self.critic.train(batch)
         # update target nets
         self.target_actor.update_weights()
