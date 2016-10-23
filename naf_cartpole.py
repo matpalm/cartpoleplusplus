@@ -365,7 +365,10 @@ class NormalizedAdvantageFunctionAgent(object):
           state_1 = state_2
         # at end of episode update replay memory
         print "episode_took", time.time() - episode_start, len(rewards)
+
+        replay_add_start = time.time()
         self.replay_memory.add_episode(initial_state, action_reward_state_sequence)
+        print "replay_took", time.time() - replay_add_start
 
       # do a training step (after waiting for buffer to fill a bit...)
       if self.replay_memory.size() > opts.replay_memory_burn_in:
