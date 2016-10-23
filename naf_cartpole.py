@@ -91,13 +91,12 @@ signal.signal(signal.SIGUSR2, set_dump_weights)
 class ValueNetwork(base_network.Network):
   """ Value network component of a NAF network. Created as seperate net because it has a target network."""
 
-  def __init__(self, namespace, input_state, input_state_idx, hidden_layer_config):
+  def __init__(self, namespace, input_state, hidden_layer_config):
     super(ValueNetwork, self).__init__(namespace)
 
     # since state is keep in a tf variable we keep track of the variable itself
     # as well as an indexing placeholder
     self.input_state = input_state
-    self.input_state_idx = input_state_idx
 
     with tf.variable_scope(namespace):
       # expose self.input_state_representation since it will be the network "shared"
@@ -118,8 +117,7 @@ class ValueNetwork(base_network.Network):
 class NafNetwork(base_network.Network):
 
   def __init__(self, namespace,
-               input_state, input_state_idx,
-               input_state_2, input_state_2_idx,
+               input_state, input_state_2,
                value_net, target_value_net,
                action_dim):
     super(NafNetwork, self).__init__(namespace)
@@ -135,12 +133,8 @@ class NafNetwork(base_network.Network):
     self.target_value_net = target_value_net
 
     # keep placeholders provided and build any others required
-    # use input_state_idx for feeding indexes into replay memory
-    # use input_state for feeding explicit state (e.g. during eval)
     self.input_state = input_state
-    self.input_state_idx = input_state_idx
     self.input_state_2 = input_state_2
-    self.input_state_2_idx = input_state_2_idx
     self.input_action = tf.placeholder(shape=[None, action_dim],
                                        dtype=tf.float32, name="input_action")
     self.reward =  tf.placeholder(shape=[None, 1],
@@ -269,22 +263,22 @@ class NafNetwork(base_network.Network):
 
   def train(self, batch):
     _, _, l = tf.get_default_session().run([self.check_numerics, self.train_op, self.loss],
-                                 feed_dict={self.input_state_idx: batch.state_1_idx,
+                                 feed_dict={self.input_state: batch.state_1,
                                             self.input_action: batch.action,
                                             self.reward: batch.reward,
                                             self.terminal_mask: batch.terminal_mask,
-                                            self.input_state_2_idx: batch.state_2_idx,
+                                            self.input_state_2: batch.state_2,
                                             base_network.IS_TRAINING: True})
     return l
 
   def debug_values(self, batch):
     values = tf.get_default_session().run([self._l_values, self.loss, self.value_net.value,
                                            self.advantage, self.target_value_net.value],
-                                   feed_dict={self.input_state_idx: batch.state_1_idx,
+                                   feed_dict={self.input_state: batch.state_1,
                                               self.input_action: batch.action,
                                               self.reward: batch.reward,
                                               self.terminal_mask: batch.terminal_mask,
-                                              self.input_state_2_idx: batch.state_2_idx,
+                                              self.input_state_2: batch.state_2,
                                               base_network.IS_TRAINING: False})
     values = [np.squeeze(v) for v in values]
     return values
@@ -298,32 +292,29 @@ class NormalizedAdvantageFunctionAgent(object):
 
     # for now, with single machine synchronous training, use a replay memory for training.
     # TODO: switch back to async training with multiple replicas (as in drivebot project)
-    self.replay_memory = replay_memory.ReplayMemory(tf.get_default_session(),
-                                                    opts.replay_memory_size,
+    self.replay_memory = replay_memory.ReplayMemory(opts.replay_memory_size,
                                                     state_shape, action_dim)
 
-    # the same input states are shared by the value nets as well as the naf networks.
-    # explicitly define them now.
+    # s1 and s2 placeholders
     batched_state_shape = [None] + list(state_shape)
-    s1, s1_idx, s2, s2_idx = self.replay_memory.batch_ops()
+    s1 = tf.placeholder(shape=batched_state_shape, dtype=tf.float32)
+    s2 = tf.placeholder(shape=batched_state_shape, dtype=tf.float32)
 
     # initialise base models for value & naf networks. value subportion of net is
     # explicitly created seperate because it has a target network note: in the case of
     # --share-input-state-representation the input state network of the value_net will
     # be reused by the naf.l_value and naf.output_actions net
-    self.value_net = ValueNetwork("value", s1, s1_idx,
-                                  opts.hidden_layers)
-    self.target_value_net = ValueNetwork("target_value", s2, s2_idx,
-                                         opts.hidden_layers)
-    self.naf = NafNetwork("naf",
-                          s1, s1_idx, s2, s2_idx,
+    self.value_net = ValueNetwork("value", s1, opts.hidden_layers)
+    self.target_value_net = ValueNetwork("target_value", s2, opts.hidden_layers)
+    self.naf = NafNetwork("naf", s1, s2,
                           self.value_net, self.target_value_net,
                           action_dim)
 
   def post_var_init_setup(self):
     # prepopulate replay memory (if configured to do so)
-    if opts.event_log_in:
-      self.replay_memory.reset_from_event_log(opts.event_log_in)
+    # TODO: rewrite!!!
+#    if opts.event_log_in:
+#      self.replay_memory.reset_from_event_log(opts.event_log_in)
     # hook networks up to their targets
     # ( does one off clobber to init all vars in target network )
     self.target_value_net.set_as_target_network_for(self.value_net,
@@ -381,11 +372,11 @@ class NormalizedAdvantageFunctionAgent(object):
         if VERBOSE_DEBUG:
           print "-----"
           print "> BATCH"
-          print "state_1", batch.state_1_idx.T
+          print "state_1", batch.state_1.T
           print "action\n", batch.action.T
           print "reward        ", batch.reward.T
           print "terminal_mask ", batch.terminal_mask.T
-          print "state_2", batch.state_2_idx.T
+          print "state_2", batch.state_2.T
           print "< BATCH"
           l_values, l, v, a, vp = self.naf.debug_values(batch)
           print "> BATCH DEBUG VALUES"
