@@ -29,7 +29,7 @@ class ReplayMemory(object):
     # memory since a rollout of length n contains n+1 states.
     self.state_buffer_size = int(buffer_size*load_factor)
     shape = [self.state_buffer_size] + list(state_shape)
-    self.state = np.empty(shape, dtype=np.float32)
+    self.state = np.empty(shape, dtype=np.float16)
 
     # keep track of free slots in state buffer
     self.state_free_slots = list(range(self.state_buffer_size))
