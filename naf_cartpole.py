@@ -467,7 +467,7 @@ def main():
     # init any remaining vars (eg replay memory)
     sess.run(tf.initialize_all_variables())
     for v in tf.all_variables():
-      print >>sys.stderr, v.name, v.get_shape()
+      print >>sys.stderr, v.name, util.shape_and_product_of(v)
 
     # now that we've either init'd from scratch, or loaded up a checkpoint,
     # we can do any required post init work.
