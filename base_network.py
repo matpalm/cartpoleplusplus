@@ -74,15 +74,23 @@ class Network(object):
 
     # state is (batch, height, width, rgb, camera_idx, repeat)
     # rollup rgb, camera_idx and repeat into num_channels
+    # i.e. (batch, height, width, rgb*camera_idx*repeat)
     height, width = map(int, input_layer.get_shape()[1:3])
     num_channels = input_layer.get_shape()[3:].num_elements()
     input_layer = tf.reshape(input_layer, [-1, height, width, num_channels])
     print >>sys.stderr, "input_layer", util.shape_and_product_of(input_layer)
 
+    # whiten image, per channel, using batch_normalisation layer with
+    # params calculated directly from batch.
+    axis = list(range(input_layer.get_shape().ndims - 1))
+    batch_mean, batch_var = tf.nn.moments(input_layer, axis)  # gives moments per channel
+    whitened_input_layer = tf.nn.batch_normalization(input_layer, batch_mean, batch_var,
+                                                     scale=None, offset=None,
+                                                     variance_epsilon=1e-6)
+
     # TODO: num_outputs here are really dependant on the incoming channels,
     # which depend on the #repeats & cameras so they should be a param.
-
-    model = slim.conv2d(input_layer, num_outputs=20, kernel_size=[4, 4],
+    model = slim.conv2d(whitened_input_layer, num_outputs=20, kernel_size=[4, 4],
                         normalizer_fn=normalizer_fn,
                         normalizer_params=normalizer_params,
                         scope='conv1')

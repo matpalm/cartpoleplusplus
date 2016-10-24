@@ -239,7 +239,7 @@ class BulletCartpole(gym.Env):
     rgba_img = np.reshape(np.asarray(rgba, dtype=np.float16),
                           (self.render_height, self.render_width, 4))
     rgb_img = rgba_img[:,:,:3]  # slice off alpha, always 1.0
-    rgb_img = (rgb_img - 240) / 50  # hard coded standardisation based on emperical samples
+    rgb_img /= 255
     return rgb_img
 
   def set_state_element_for_repeat(self, repeat):
