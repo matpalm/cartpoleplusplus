@@ -26,7 +26,6 @@ def read_state_from_event(event):
     eg_render = event.state[0].render[0]
     state = np.empty((eg_render.height, eg_render.width, 3,
                       num_cameras, num_repeats))
-    print "state", state.shape
     for r_idx in range(num_repeats):
       repeat = event.state[r_idx]
       for c_idx in range(num_cameras):

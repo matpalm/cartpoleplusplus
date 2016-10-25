@@ -37,6 +37,29 @@ class ReplayMemory(object):
     # some stats
     self.stats = collections.Counter()
 
+  def reset_from_event_log(self, log_file):
+    elr = event_log.EventLogReader(log_file)
+    num_episodes = 0
+    num_events = 0
+    start = time.time()
+    for episode in elr.entries():
+      initial_state = None
+      action_reward_state_sequence = []
+      for event_id, event in enumerate(episode.event):
+        if event_id == 0:
+          assert len(event.action) == 0
+          assert not event.HasField("reward")
+          initial_state = event_log.read_state_from_event(event)
+        else:
+          action_reward_state_sequence.append((event.action, event.reward,
+                                               event_log.read_state_from_event(event)))
+        num_events += 1
+      num_episodes += 1
+      self.add_episode(initial_state, action_reward_state_sequence)
+      if self.full:
+        break
+    print >>sys.stderr, "reset_from_event_log \"%s\" num_episodes=%d num_events=%d took %s sec"  % (log_file, num_episodes, num_events, time.time()-start)
+
   def add_episode(self, initial_state, action_reward_state_sequence):
     self.stats['>add_episode'] += 1
     assert len(action_reward_state_sequence) > 0

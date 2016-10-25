@@ -313,8 +313,8 @@ class NormalizedAdvantageFunctionAgent(object):
   def post_var_init_setup(self):
     # prepopulate replay memory (if configured to do so)
     # TODO: rewrite!!!
-#    if opts.event_log_in:
-#      self.replay_memory.reset_from_event_log(opts.event_log_in)
+    if opts.event_log_in:
+      self.replay_memory.reset_from_event_log(opts.event_log_in)
     # hook networks up to their targets
     # ( does one off clobber to init all vars in target network )
     self.target_value_net.set_as_target_network_for(self.value_net,
