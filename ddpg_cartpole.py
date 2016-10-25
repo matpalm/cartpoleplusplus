@@ -81,8 +81,6 @@ class ActorNetwork(base_network.Network):
   def __init__(self, namespace, input_state, action_dim):
     super(ActorNetwork, self).__init__(namespace)
 
-    # since state is keep in a tf variable we keep track of the variable itself
-    # as well as an indexing placeholder
     self.input_state = input_state
 
     self.exploration_noise = util.OrnsteinUhlenbeckNoise(action_dim, 
@@ -299,6 +297,7 @@ class DeepDeterministicPolicyGradientAgent(object):
     n = 0
     while True:      
       rewards = []
+      losses = []
 
       # run an episode
       if opts.dont_do_rollouts:
@@ -352,7 +351,9 @@ class DeepDeterministicPolicyGradientAgent(object):
       stats = collections.OrderedDict()
       stats["time"] = time.time()
       stats["n"] = n
+      stats["mean_losses"] = float(np.mean(losses))
       stats["total_reward"] = np.sum(rewards)
+      stats["episode_len"] = len(rewards)
       stats["replay_memory_stats"] = self.replay_memory.current_stats()
       print "STATS %s\t%s" % (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                               json.dumps(stats))
@@ -414,13 +415,15 @@ def main():
   with tf.Session(config=config) as sess:
     agent = DeepDeterministicPolicyGradientAgent(env=env)
 
-    # setup saver util and either load latest ckpt, or init if none...
+    # setup saver util and either load latest ckpt
     saver_util = None
     if opts.ckpt_dir is not None:
       saver_util = util.SaverUtil(sess, opts.ckpt_dir, opts.ckpt_freq)
+
+    # init any remaining vars (eg replay memory)
     sess.run(tf.initialize_all_variables())
     for v in tf.all_variables():
-      print >>sys.stderr, v.name, v.get_shape()
+      print >>sys.stderr, v.name, util.shape_and_product_of(v)
 
     # now that we've either init'd from scratch, or loaded up a checkpoint,
     # we can do any required post init work.

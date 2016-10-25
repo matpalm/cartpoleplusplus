@@ -46,7 +46,7 @@ env = bullet_cartpole.BulletCartpole(opts=opts, discrete_actions=True)
 import base_network
 import tensorflow.contrib.slim as slim
 
-VERBOSE_DEBUG = True
+VERBOSE_DEBUG = False
 def toggle_verbose_debug(signal, frame):
   global VERBOSE_DEBUG
   VERBOSE_DEBUG = not VERBOSE_DEBUG
@@ -181,6 +181,8 @@ class LikelihoodRatioPolicyGradientAgent(base_network.Network):
                                                         self.advantages: advantages})
     return float(loss)
 
+  def post_var_init_setup(self):
+    pass
 
   def run_training(self, max_num_actions, max_run_time, rollouts_per_batch,
                    saver_util):
@@ -192,12 +194,13 @@ class LikelihoodRatioPolicyGradientAgent(base_network.Network):
     n = 0
     while True:
       total_rewards = []
+      losses = []
+
       # perform a number of rollouts
       batch_observations, batch_actions, batch_advantages = [], [], []
-      total_rewards = []
+
       for _ in xrange(rollouts_per_batch):
         observations, actions, rewards = self.rollout()
-        num_actions_taken += len(rewards)
         batch_observations += observations
         batch_actions += actions
         # train with advantages, not per observation/action rewards.
@@ -213,14 +216,16 @@ class LikelihoodRatioPolicyGradientAgent(base_network.Network):
         loss = 0
       else:
         loss = self.train(batch_observations, batch_actions, batch_advantages)
+        losses.append(loss)
 
       # dump some stats and progress info
       stats = collections.OrderedDict()
       stats["time"] = time.time()
       stats["n"] = n
-      stats["mean_batch"] = np.mean(total_rewards)
-      stats["rewards"] = total_rewards
-      stats["loss"] = loss
+      stats["mean_losses"] = float(np.mean(losses))
+      stats["total_reward"] = np.sum(total_rewards)
+      stats["episode_len"] = len(rewards)
+
       print "STATS %s\t%s" % (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                               json.dumps(stats))
       sys.stdout.flush()
@@ -241,6 +246,7 @@ class LikelihoodRatioPolicyGradientAgent(base_network.Network):
         DUMP_WEIGHTS = False
 
       # exit when finished
+      num_actions_taken += len(rewards)
       if max_num_actions > 0 and num_actions_taken > max_num_actions:
         break
       if max_run_time > 0 and time.time() > start_time + max_run_time:
@@ -269,7 +275,7 @@ def main():
   with tf.Session(config=config) as sess:
     agent = LikelihoodRatioPolicyGradientAgent(env)
 
-    # setup saver util and load latest ckpt
+    # setup saver util and either load latest ckpt
     saver_util = None
     if opts.ckpt_dir is not None:
       saver_util = util.SaverUtil(sess, opts.ckpt_dir, opts.ckpt_freq)
@@ -277,7 +283,11 @@ def main():
     # init any remaining vars (eg replay memory)
     sess.run(tf.initialize_all_variables())
     for v in tf.all_variables():
-      print >>sys.stderr, v.name, v.get_shape()
+      print >>sys.stderr, v.name, util.shape_and_product_of(v)
+
+    # now that we've either init'd from scratch, or loaded up a checkpoint,
+    # we can do any required post init work.
+    agent.post_var_init_setup()
 
     # run either eval or training
     if opts.num_eval > 0:

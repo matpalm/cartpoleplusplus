@@ -94,8 +94,6 @@ class ValueNetwork(base_network.Network):
   def __init__(self, namespace, input_state, hidden_layer_config):
     super(ValueNetwork, self).__init__(namespace)
 
-    # since state is keep in a tf variable we keep track of the variable itself
-    # as well as an indexing placeholder
     self.input_state = input_state
 
     with tf.variable_scope(namespace):
