@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 import datetime, os, time, yaml, sys
 import json
+import matplotlib.pyplot as plt
 import numpy as np
+import StringIO
 import tensorflow as tf
 import time
 
@@ -151,3 +153,30 @@ class OrnsteinUhlenbeckNoise(object):
     self.state = np.clip(self.max_magnitude, -self.max_magnitude, self.state)
     return np.copy(self.state)
 
+
+def write_img_to_png_file(img, filename):
+  png_bytes = StringIO.StringIO()
+  plt.imsave(png_bytes, img)
+  print "writing", filename
+  with open(filename, "w") as f:
+    f.write(png_bytes.getvalue())
+
+# some hacks for writing state to disk for visualisation
+def render_state_to_png(step, state):
+  height, width, num_channels, num_cameras, num_repeats = state.shape
+  for c_idx in range(num_cameras):
+    for r_idx in range(num_repeats):
+      for channel in range(num_channels):
+        img = np.empty((height, width, 3))
+        img[:,:,0] = state[:,:,0,c_idx,r_idx]
+        img[:,:,1] = state[:,:,1,c_idx,r_idx]
+        img[:,:,2] = state[:,:,2,c_idx,r_idx]
+        write_img_to_png_file(img, "/tmp/state_s%03d_c%s_r%s.png" % (step, c_idx, r_idx))
+
+def render_action_to_png(step, action):
+  import Image, ImageDraw
+  img = Image.new('RGB', (50, 50), (50, 50, 50))
+  canvas = ImageDraw.Draw(img)
+  lx, ly = int(25+(action[0][0]*25)), int(25+(action[0][1]*25))
+  canvas.line((25,25, lx,ly), fill="black")
+  img.save("/tmp/action_%03d.png" % step)

@@ -1,3 +1,4 @@
+import numpy as np
 import operator
 import sys
 import tensorflow as tf
@@ -90,25 +91,28 @@ class Network(object):
 
     # TODO: num_outputs here are really dependant on the incoming channels,
     # which depend on the #repeats & cameras so they should be a param.
-    model = slim.conv2d(whitened_input_layer, num_outputs=20, kernel_size=[4, 4],
+    model = slim.conv2d(whitened_input_layer, num_outputs=10, kernel_size=[5, 5],
                         normalizer_fn=normalizer_fn,
                         normalizer_params=normalizer_params,
                         scope='conv1')
     model = slim.max_pool2d(model, kernel_size=[2, 2], scope='pool1')
+    self.pool1 = model
     print >>sys.stderr, "pool1", util.shape_and_product_of(model)
 
-    model = slim.conv2d(model, num_outputs=40, kernel_size=[4, 4],
+    model = slim.conv2d(model, num_outputs=10, kernel_size=[5, 5],
                         normalizer_fn=normalizer_fn,
                         normalizer_params=normalizer_params,
                         scope='conv2')
     model = slim.max_pool2d(model, kernel_size=[2, 2], scope='pool2')
+    self.pool2 = model
     print >>sys.stderr, "pool2", util.shape_and_product_of(model)
 
-    model = slim.conv2d(model, num_outputs=80, kernel_size=[4, 4],
+    model = slim.conv2d(model, num_outputs=10, kernel_size=[3, 3],
                         normalizer_fn=normalizer_fn,
                         normalizer_params=normalizer_params,
                         scope='conv3')
     model = slim.max_pool2d(model, kernel_size=[2, 2], scope='pool2')
+    self.pool3 = model
     print >>sys.stderr, "pool3", util.shape_and_product_of(model)
 
     return slim.flatten(model, scope='flat')
@@ -117,8 +121,28 @@ class Network(object):
     # TODO: use in lrpg and ddpg too
     if opts.use_raw_pixels:
       conv_net = self.simple_conv_net_on(input_state, opts)
-      hidden1 = slim.fully_connected(conv_net, 400, scope='hidden1')
+      hidden1 = slim.fully_connected(conv_net, 100, scope='hidden1')
       return slim.fully_connected(hidden1, 50, scope='hidden2')
     else:
       flat_input_state = slim.flatten(input_state, scope='flat')
       return self.hidden_layers_starting_at(flat_input_state, opts.hidden_layers)
+
+  def render_convnet_activations(self, activations, filename_base):
+    _batch, height, width, num_filters = activations.shape
+    for f_idx in range(num_filters):
+      single_channel = activations[0,:,:,f_idx]
+      single_channel /= np.max(single_channel)
+      img = np.empty((height, width, 3))
+      img[:,:,0] = single_channel
+      img[:,:,1] = single_channel
+      img[:,:,2] = single_channel
+      util.write_img_to_png_file(img, "%s_f%02d.png" % (filename_base, f_idx))
+
+  def render_all_convnet_activations(self, step, input_state_placeholder, state):
+    activations = tf.get_default_session().run([self.pool1, self.pool2, self.pool3],
+                                               feed_dict={input_state_placeholder: [state],
+                                                          IS_TRAINING: False})
+    filename_base = "/tmp/activation_s%03d" % step
+    self.render_convnet_activations(activations[0], filename_base + "_p0")
+    self.render_convnet_activations(activations[1], filename_base + "_p1")
+    self.render_convnet_activations(activations[2], filename_base + "_p2")

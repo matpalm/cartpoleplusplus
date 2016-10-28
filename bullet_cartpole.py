@@ -225,8 +225,8 @@ class BulletCartpole(gym.Env):
     return np.copy(self.state), reward, self.done, info
 
   def render_rgb(self, camera_idx):
-    cameraPos = [(0.0, 0.5, 0.5), (0.5, 0.0, 0.5)][camera_idx]
-    targetPos = (0, 0, 0.2)
+    cameraPos = [(0.0, 0.75, 0.75), (0.75, 0.0, 0.75)][camera_idx]
+    targetPos = (0, 0, 0.3)
     cameraUp = (0, 0, 1)
     nearVal, farVal = 1, 20
     fov = 60

@@ -422,7 +422,6 @@ class NormalizedAdvantageFunctionAgent(object):
       if max_run_time > 0 and time.time() > start_time + max_run_time:
         break
 
-
   def run_eval(self, num_episodes, add_noise=False):
     """ run num_episodes of eval and output episode length and rewards """
     for i in xrange(num_episodes):
@@ -437,6 +436,10 @@ class NormalizedAdvantageFunctionAgent(object):
                                                                    np.linalg.norm(action), reward)
         total_reward += reward
         steps += 1
+        if False:  # RENDER ALL STATES / ACTIVATIONS to /tmp
+          self.naf.render_all_convnet_activations(steps, self.naf.input_state, state)
+          util.render_state_to_png(steps, state)
+          util.render_action_to_png(steps, action)
       print "EVAL", i, steps, total_reward
     sys.stdout.flush()
 
