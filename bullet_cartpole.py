@@ -18,9 +18,9 @@ def add_opts(parser):
   parser.add_argument('--initial-force', type=float, default=55.0,
                       help="magnitude of initial push, in random direction")
   parser.add_argument('--no-random-theta', action='store_true')
-  parser.add_argument('--action-repeats', type=int, default=2,
+  parser.add_argument('--action-repeats', type=int, default=3,
                       help="number of action repeats")
-  parser.add_argument('--steps-per-repeat', type=int, default=5,
+  parser.add_argument('--steps-per-repeat', type=int, default=4,
                       help="number of sim steps per repeat")
   parser.add_argument('--num-cameras', type=int, default=1,
                       help="how many camera points to render; 1 or 2")
