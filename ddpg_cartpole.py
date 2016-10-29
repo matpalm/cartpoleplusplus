@@ -164,6 +164,7 @@ class CriticNetwork(base_network.Network):
     with tf.variable_scope(namespace):
       if opts.use_raw_pixels:
         conv_net = self.simple_conv_net_on(self.input_state, opts)
+        # TODO: use base_network helper
         hidden1 = slim.fully_connected(conv_net, 200, scope='hidden1')
         hidden2 = slim.fully_connected(hidden1, 50, scope='hidden2')
         concat_inputs = tf.concat(1, [hidden2, self.input_action])

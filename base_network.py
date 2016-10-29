@@ -5,7 +5,8 @@ import tensorflow as tf
 import tensorflow.contrib.slim as slim
 import util
 
-# TODO: move opts only used in this case to an add_opts method
+# TODO: move opts only used in this module to an add_opts method
+#       requires fixing the bullet-before-slim problem though :/
 
 IS_TRAINING = tf.placeholder(tf.bool, name="is_training")
 
@@ -54,8 +55,10 @@ class Network(object):
         v.append(var)
     return v
 
-  def hidden_layers_starting_at(self, layer, config):
-    layer_sizes = map(int, config.split(","))
+  def hidden_layers_starting_at(self, layer, layer_sizes, opts=None):
+    # TODO: opts=None => will force exception on old calls....
+    if not isinstance(layer_sizes, list):
+      layer_sizes = map(int, layer_sizes.split(","))
     assert len(layer_sizes) > 0
     for i, size in enumerate(layer_sizes):
       layer = slim.fully_connected(scope="h%d" % i,
@@ -63,6 +66,8 @@ class Network(object):
                                   num_outputs=size,
                                   weights_regularizer=tf.contrib.layers.l2_regularizer(0.01),
                                   activation_fn=tf.nn.relu)
+      if opts.use_dropout:
+        layer = slim.dropout(layer, is_training=IS_TRAINING, scope="do%d" % i)
     return layer
 
   def simple_conv_net_on(self, input_layer, opts):
@@ -115,17 +120,14 @@ class Network(object):
     self.pool3 = model
     print >>sys.stderr, "pool3", util.shape_and_product_of(model)
 
-    return slim.flatten(model, scope='flat')
+    return model
 
   def input_state_network(self, input_state, opts):
     # TODO: use in lrpg and ddpg too
     if opts.use_raw_pixels:
-      conv_net = self.simple_conv_net_on(input_state, opts)
-      hidden1 = slim.fully_connected(conv_net, 100, scope='hidden1')
-      return slim.fully_connected(hidden1, 50, scope='hidden2')
-    else:
-      flat_input_state = slim.flatten(input_state, scope='flat')
-      return self.hidden_layers_starting_at(flat_input_state, opts.hidden_layers)
+      input_state = self.simple_conv_net_on(input_state, opts)
+    flattened_input_state = slim.flatten(input_state, scope='flat')
+    return self.hidden_layers_starting_at(flattened_input_state, opts.hidden_layers, opts)
 
   def render_convnet_activations(self, activations, filename_base):
     _batch, height, width, num_filters = activations.shape

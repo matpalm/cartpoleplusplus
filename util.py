@@ -16,6 +16,8 @@ def add_opts(parser):
                        help="tf.train.XXXOptimizer to use")
    parser.add_argument('--optimiser-args', type=str, default="{\"learning_rate\": 0.001}",
                        help="json serialised args for optimiser constructor")
+   parser.add_argument('--use-dropout', action='store_true',
+                       help="include a dropout layers after each fully connected layer")
 
 class StopWatch:
   def reset(self):
