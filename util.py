@@ -164,11 +164,17 @@ def write_img_to_png_file(img, filename):
     f.write(png_bytes.getvalue())
 
 # some hacks for writing state to disk for visualisation
-def render_state_to_png(step, state):
+def render_state_to_png(step, state, split_channels=False):
   height, width, num_channels, num_cameras, num_repeats = state.shape
   for c_idx in range(num_cameras):
     for r_idx in range(num_repeats):
-      for channel in range(num_channels):
+      if split_channels:
+        for channel in range(num_channels):
+          single_channel = state[:,:,channel,c_idx,r_idx]
+          img = np.zeros((height, width, 3))
+          img[:,:,channel] = single_channel
+          write_img_to_png_file(img, "/tmp/state_s%03d_ch%s_c%s_r%s.png" % (step, channel, c_idx, r_idx))
+      else:
         img = np.empty((height, width, 3))
         img[:,:,0] = state[:,:,0,c_idx,r_idx]
         img[:,:,1] = state[:,:,1,c_idx,r_idx]
