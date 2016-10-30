@@ -78,6 +78,10 @@ class Network(object):
       normalizer_fn = None
       normalizer_params = None
 
+    # optionally drop blue channel, in a simple cart pole env we only need r/g
+    #if opts.drop_blue_channel:
+    #  input_layer = input_layer[:,:,:,0:2,:,:]
+
     # state is (batch, height, width, rgb, camera_idx, repeat)
     # rollup rgb, camera_idx and repeat into num_channels
     # i.e. (batch, height, width, rgb*camera_idx*repeat)
