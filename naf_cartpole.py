@@ -61,6 +61,8 @@ parser.add_argument('--action-noise-theta', type=float, default=0.01,
 parser.add_argument('--action-noise-sigma', type=float, default=0.05,
                     help="OrnsteinUhlenbeckNoise sigma (magnitude) param for action"
                          " exploration")
+parser.add_argument('--gpu-mem-fraction', type=float, default=None,
+                    help="if not none use only this fraction of gpu memory")
 
 util.add_opts(parser)
 
@@ -457,6 +459,8 @@ def main():
   config = tf.ConfigProto()
 #  config.gpu_options.allow_growth = True
 #  config.log_device_placement = True
+  if opts.gpu_mem_fraction is not None:
+    config.gpu_options.per_process_gpu_memory_fraction = opts.gpu_mem_fraction
   with tf.Session(config=config) as sess:
     agent = NormalizedAdvantageFunctionAgent(env=env)
 
