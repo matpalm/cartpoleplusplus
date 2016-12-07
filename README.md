@@ -13,7 +13,9 @@ this repo contains a [gym env](https://gym.openai.com/) for this cartpole as wel
 
 we also train a [deep q network](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf) from [keras-rl](https://github.com/matthiasplappert/keras-rl) as an externally implemented baseline.
 
-for more info see [the blog post](http://matpalm.com/blog/cartpole_plus_plus/)
+for more info see [the blog post](http://matpalm.com/blog/cartpole_plus_plus/). 
+for experiments more related to potential transfer between sim and real see [drivebot](https://github.com/matpalm/drivebot).
+for next gen experiments in continuous control from pixels in minecraft see [malmomo](https://github.com/matpalm/malmomo)
 
 ## general environment
 
